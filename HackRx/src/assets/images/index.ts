@@ -34,6 +34,8 @@ export type RocketDirection = "left" | "right";
 const mascot = mascotPurpleMain;
 const mascotYellow = mascotYellowMain;
 
+import sachackslogo from "./sachackslogo.png"
+
 export {
   mascot,
   mascotYellow,
@@ -46,6 +48,7 @@ export {
   comicCloudGrey,
   comicCloudOutline,
   comicStarYellow,
+  sachackslogo,
 };
 
 

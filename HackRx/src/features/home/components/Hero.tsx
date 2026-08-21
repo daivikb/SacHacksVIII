@@ -9,7 +9,7 @@ import {
   useMotionTemplate,
   useMotionValue,
 } from "framer-motion";
-import { mascot, mascotYellow, HERO_PHOTOS } from "@/assets/images";
+import { mascot, mascotYellow, HERO_PHOTOS, sachackslogo } from "@/assets/images";
 import { useRegistrationDialog } from "@/components/layout/Layout";
 
 
@@ -265,12 +265,12 @@ export function Hero({ gridInView = false }: { gridInView?: boolean }) {
     const el = sectionRef.current;
     const io = el
       ? new IntersectionObserver(
-          ([e]) => {
-            visible = e.isIntersecting;
-            sync();
-          },
-          { threshold: 0 },
-        )
+        ([e]) => {
+          visible = e.isIntersecting;
+          sync();
+        },
+        { threshold: 0 },
+      )
       : null;
     io?.observe(el!);
     document.addEventListener("visibilitychange", sync);
@@ -339,6 +339,15 @@ export function Hero({ gridInView = false }: { gridInView?: boolean }) {
               animate={{ height: "auto" }}
               transition={{ delay: 0.1, duration: 0.7, ease: "easeInOut" }}
             >
+              <div className="flex items-center justify-center">
+                <h1>
+                  <img
+                    src={sachackslogo}
+                    alt="Sachacks Logo"
+                    style={{ transform: 'scale(1.1)', transformOrigin: 'top left' }}
+                  />
+                </h1>
+              </div>
               <div className="w-[92vw] max-w-[92vw] lg:max-w-[900px] flex items-center justify-center py-[2vw]">
                 <h1 className="collage-title">
                   Prescribe <em>Innovation.</em>
@@ -407,40 +416,40 @@ export function Hero({ gridInView = false }: { gridInView?: boolean }) {
                 ≤991px:  gap 15vw, images 30vw
                 ≤479px:  gap 15vw, images 40vw
                 Tailwind is mobile-first, so base=479, md=768, lg=992 */}
-              <div
-                ref={gridRef}
-                className="grid grid-cols-[1fr_1fr_1fr_1fr] gap-[15vw] lg:gap-[10vw] absolute"
-                style={{
-                  gridTemplateRows: "auto auto",
-                  gridAutoColumns: "1fr",
-                  placeItems: "center stretch",
-                  opacity: 0,
-                  transform: "translate3d(0,0,0) scale3d(0.8, 0.8, 1)",
-                  willChange: "transform, opacity",
-                }}
-              >
-                {IMAGES.map((img) => (
-                  <div
-                    key={img.id}
-                    ref={setImgRef(img.id)}
-                    className="will-change-transform"
-                    style={{ transform: "translate3d(0,0,0)" }}
-                  >
-                    <HeroImage
-                      w={img.w}
-                      h={img.h}
-                      src={HERO_PHOTOS[img.id - 1]}
-                      className="w-[40vw] md:w-[30vw] lg:w-[20vw]"
-                      style={{
-                        maxWidth: "none",
-                        position: "relative",
-                        top: img.top,
-                        left: img.left,
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
+            <div
+              ref={gridRef}
+              className="grid grid-cols-[1fr_1fr_1fr_1fr] gap-[15vw] lg:gap-[10vw] absolute"
+              style={{
+                gridTemplateRows: "auto auto",
+                gridAutoColumns: "1fr",
+                placeItems: "center stretch",
+                opacity: 0,
+                transform: "translate3d(0,0,0) scale3d(0.8, 0.8, 1)",
+                willChange: "transform, opacity",
+              }}
+            >
+              {IMAGES.map((img) => (
+                <div
+                  key={img.id}
+                  ref={setImgRef(img.id)}
+                  className="will-change-transform"
+                  style={{ transform: "translate3d(0,0,0)" }}
+                >
+                  <HeroImage
+                    w={img.w}
+                    h={img.h}
+                    src={HERO_PHOTOS[img.id - 1]}
+                    className="w-[40vw] md:w-[30vw] lg:w-[20vw]"
+                    style={{
+                      maxWidth: "none",
+                      position: "relative",
+                      top: img.top,
+                      left: img.left,
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
           </motion.div>
 
           {/* ---- 3. Scroll indicator (z-50, bottom) ----
