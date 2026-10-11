@@ -13,9 +13,21 @@
  *
  * Not shown at all (no placeholder line): per-hacker pitch, logistics and class
  * year from the design — applications don't store those fields.
+ *
+ * SECURITY — every string on this page (names, emails, institutions, demo
+ * titles and links) was typed by a participant, so it is treated as untrusted.
+ * Guardrails added here are each marked SECURITY inline:
+ *   · demo links are only clickable if they are http(s)
+ *   · emails are validated before going into a mailto: link
+ *   · CSV export neutralises spreadsheet formulas
+ *   · bulk actions only touch rows that are visible, ask before changing
+ *     several records, can't be double-fired, and never issue a duplicate cert
+ * These protect the admin's browser and guard against mistakes. They are NOT
+ * access control: who may read or write these collections has to be enforced
+ * by Firestore Security Rules, which this file cannot do.
  */
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { PortalDecor } from "@/components/layout/PortalDecor";
@@ -212,6 +224,44 @@ const text = (v: unknown, fallback = ""): string =>
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
+/**
+ * SECURITY — demo links are submitted by participants. A `javascript:` or `data:`
+ * URL in an href would run script in the admin's session when clicked, so only
+ * absolute http(s) URLs are allowed through; anything else is shown as "No link".
+ */
+function safeHttpUrl(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * SECURITY — emails come from participant-entered data. Unchecked, a value like
+ * "a@b.co?bcc=attacker@x.com&body=…" would smuggle extra recipients or text into
+ * the admin's mail client. Only plain single addresses pass, and they are
+ * URL-encoded before being placed in a mailto: link.
+ */
+const EMAIL_RE = /^[^\s@,;:<>?&#%"'()\\]+@[^\s@,;:<>?&#%"'()\\]+\.[^\s@,;:<>?&#%"'()\\]+$/;
+const isSafeEmail = (email: string) => email.length <= 254 && EMAIL_RE.test(email);
+const mailtoHref = (email: string): string | null =>
+  isSafeEmail(email) ? `mailto:${encodeURIComponent(email)}` : null;
+
+/**
+ * SECURITY — CSV/formula injection. A name such as `=HYPERLINK(...)` would be
+ * executed as a formula when the export is opened in Excel or Sheets. Cells that
+ * start with a formula trigger are prefixed with an apostrophe so they stay text.
+ */
+function csvCell(value: string): string {
+  const inert = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return `"${inert.replace(/"/g, '""')}"`;
+}
+
+/** SECURITY — bulk writes above this many records ask for confirmation first. */
+const CONFIRM_ABOVE = 1;
+
 function initialsOf(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "—";
@@ -356,6 +406,9 @@ const AdminDashboard = () => {
   const [workspace, setWorkspace] = useState<AdminWorkspace>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  // SECURITY — `busy` state only updates on the next render, so a fast double
+  // click could start the same bulk write twice. This ref flips synchronously.
+  const inFlight = useRef(false);
 
   const [lens, setLens] = useState<Lens>("signups");
   const [selected, setSelected] = useState<Record<string, true>>({});
@@ -368,6 +421,9 @@ const AdminDashboard = () => {
   const [statusFilter, setStatusFilter] = useState("All hackers");
   const [schoolFilter, setSchoolFilter] = useState("All schools");
 
+  // SECURITY NOTE — when there is no Firebase user (the hardcoded admin login in
+  // admin.service.ts), every review and certificate is recorded as issued by the
+  // literal string "admin", so the audit trail can't say which person acted.
   const actor = user?.uid ?? "admin";
   const adminName = text(user?.displayName, text(user?.email, "Admin"));
 
@@ -458,7 +514,7 @@ const AdminDashboard = () => {
         id: d.id,
         title: text(d.title, "Untitled demo"),
         status: text(d.status, "unknown"),
-        url: text(d.demo_url) || null,
+        url: safeHttpUrl(text(d.demo_url)), // SECURITY — http(s) links only
       })),
     [workspace.demos],
   );
@@ -516,7 +572,17 @@ const AdminDashboard = () => {
 
   const selectedKeys = Object.keys(selected).filter((k) => visibleRoster.some((r) => r.key === k));
   const nSel = isTeams ? Object.keys(selectedTeams).length : selectedKeys.length;
-  const selectedRows = roster.filter((r) => selected[r.key]);
+  // SECURITY — only rows that are currently visible count as selected. Before, a
+  // row ticked and then hidden by a search or filter was still accepted, declined
+  // or certified by a bulk action, even though the admin could no longer see it
+  // and the "N selected" count didn't include it.
+  const selectedRows = visibleRoster.filter((r) => selected[r.key]);
+
+  // SECURITY — every (user, certificate title) pair already issued, so the same
+  // award can't be written twice for one person by a repeat click or re-selection.
+  const issuedPairs = new Set(
+    workspace.certifications.map((c) => `${text(c.user_id)}|${text(c.title)}`),
+  );
 
   const award = AWARDS.find((a) => a.id === chosenAward) ?? AWARDS[0];
   const person = roster.find((r) => r.key === focusedKey) ?? visibleRoster[0] ?? null;
@@ -556,11 +622,19 @@ const AdminDashboard = () => {
       });
       return;
     }
+    // SECURITY — confirm before changing several applications in one click.
+    if (
+      targets.length > CONFIRM_ABOVE &&
+      !window.confirm(`${status === "approved" ? "Accept" : "Decline"} ${targets.length} applications?`)
+    ) return;
+    if (inFlight.current) return; // SECURITY — block a second run while one is in progress
+    inFlight.current = true;
     setBusy(true);
     const errors = (
       await Promise.all(targets.map((r) => reviewApplication(r.applicationId as string, status, actor)))
     ).filter(Boolean) as string[];
     setBusy(false);
+    inFlight.current = false;
 
     if (errors.length) {
       toast({ title: "Some reviews failed", description: errors[0], variant: "destructive" });
@@ -577,21 +651,34 @@ const AdminDashboard = () => {
   };
 
   const runCertify = async () => {
-    const targets = selectedRows.filter((r) => r.memberId);
-    const skipped = selectedRows.length - targets.length;
+    const withAccount = selectedRows.filter((r) => r.memberId);
+    const skipped = selectedRows.length - withAccount.length;
+    // SECURITY — drop anyone who already holds this exact certificate.
+    const targets = withAccount.filter((r) => !issuedPairs.has(`${r.memberId}|${award.label}`));
+    const already = withAccount.length - targets.length;
     if (targets.length === 0) {
       toast({
         title: "Nothing to issue",
-        description: "Certificates can only go to people with a registered account.",
+        description: already
+          ? `Everyone selected already holds “${award.label}”.`
+          : "Certificates can only go to people with a registered account.",
         variant: "destructive",
       });
       return;
     }
+    // SECURITY — confirm before issuing several certificates in one click.
+    if (
+      targets.length > CONFIRM_ABOVE &&
+      !window.confirm(`Issue “${award.label}” to ${targets.length} hackers?`)
+    ) return;
+    if (inFlight.current) return; // SECURITY — block a second run while one is in progress
+    inFlight.current = true;
     setBusy(true);
     const errors = (
       await Promise.all(targets.map((r) => issueCertification(r.memberId as string, actor, award.label)))
     ).filter(Boolean) as string[];
     setBusy(false);
+    inFlight.current = false;
 
     if (errors.length) {
       toast({ title: "Certificate failed", description: errors[0], variant: "destructive" });
@@ -600,7 +687,8 @@ const AdminDashboard = () => {
         title: "Certification assigned",
         description:
           `“${award.label}” issued to ${plural(targets.length, "hacker", "hackers")}` +
-          (skipped ? ` · ${skipped} skipped (no account)` : ""),
+          (skipped ? ` · ${skipped} skipped (no account)` : "") +
+          (already ? ` · ${already} skipped (already issued)` : ""),
       });
     }
     clearSelection();
@@ -608,9 +696,10 @@ const AdminDashboard = () => {
   };
 
   const emailSelected = () => {
+    // SECURITY — only well-formed addresses reach the mail client (see isSafeEmail).
     const addresses = selectedRows
       .map((r) => r.email)
-      .filter((e) => e.includes("@"));
+      .filter(isSafeEmail);
     if (addresses.length === 0) {
       toast({ title: "No email addresses", description: "The selected rows have no usable email.", variant: "destructive" });
       return;
@@ -624,7 +713,7 @@ const AdminDashboard = () => {
       r.name, r.email, r.school, statusTone(r.signup).label, r.cert ?? "",
     ]);
     const csv = [header, ...body]
-      .map((line) => line.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .map((line) => line.map((cell) => csvCell(String(cell))).join(",")) // SECURITY — see csvCell
       .join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
@@ -1165,7 +1254,11 @@ const AdminDashboard = () => {
                     </DetailRow>
                     <DetailRow label="Email">
                       {person
-                        ? <a href={`mailto:${person.email}`}>{person.email}</a>
+                        ? (() => {
+                            // SECURITY — only link the address if it is a plain, valid email.
+                            const href = mailtoHref(person.email);
+                            return href ? <a href={href}>{person.email}</a> : person.email;
+                          })()
                         : "—"}
                     </DetailRow>
                     <DetailRow label="Institution">
@@ -1192,8 +1285,12 @@ const AdminDashboard = () => {
 
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", padding: "16px 20px", borderTop: `1px solid ${C.line}` }}>
                     <GhostButton
-                      onClick={() => person && (window.location.href = `mailto:${person.email}`)}
-                      disabled={!person}
+                      // SECURITY — disabled unless the address passes isSafeEmail.
+                      onClick={() => {
+                        const href = person && mailtoHref(person.email);
+                        if (href) window.location.href = href;
+                      }}
+                      disabled={!person || !isSafeEmail(person.email)}
                     >
                       Email
                     </GhostButton>
