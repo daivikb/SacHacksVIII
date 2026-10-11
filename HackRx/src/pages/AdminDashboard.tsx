@@ -35,17 +35,17 @@ const AdminDashboard = () => {
 
   useEffect(() => { void load(); }, [load]);
 
+  const actor = user?.uid ?? "admin";
+
   const review = async (id: string, status: "approved" | "rejected") => {
-    if (!user) return;
-    const error = await reviewApplication(id, status, user.uid);
+    const error = await reviewApplication(id, status, actor);
     if (error) toast({ title: "Review failed", description: error, variant: "destructive" });
     else void load();
   };
 
   const certify = async (memberId: string) => {
-    if (!user) return;
     const title = certificateTitles[memberId]?.trim() || "HackRx Participant";
-    const error = await issueCertification(memberId, user.uid, title);
+    const error = await issueCertification(memberId, actor, title);
     if (error) toast({ title: "Certificate failed", description: error, variant: "destructive" });
     else {
       toast({ title: "Certification assigned" });

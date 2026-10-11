@@ -16,11 +16,9 @@ const Protected = ({ children }: { children: ReactElement }) => {
 };
 
 const AdminOnly = ({ children }: { children: ReactElement }) => {
-  const { user } = useAuth();
   const { isAdmin, loading } = useAdmin();
   if (loading) return null;
-  if (!user) return <Navigate to="/" replace />;
-  return isAdmin ? children : <Navigate to="/dashboard" replace />;
+  return isAdmin ? children : <Navigate to="/" replace />;
 };
 
 /** Admins are organisers, not participants — send them to the admin workspace. */

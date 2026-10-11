@@ -20,7 +20,6 @@ import {
 
 import {
   db,
-  isFirebaseConfigured,
 } from "@/integrations/firebase/client";
 
 /**
@@ -69,6 +68,26 @@ export interface AdminWorkspace {
 
 export type ApplicationStatus = "approved" | "rejected";
 
+
+const ADMIN_EMAIL = "test123@sachacks";
+const ADMIN_PASSWORD = "test123";
+const ADMIN_FLAG = "hackrx_admin_session";
+
+export function adminLogin(email: string, password: string): boolean {
+  const ok =
+    email.trim().toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASSWORD;
+  if (ok) sessionStorage.setItem(ADMIN_FLAG, "1");
+  return ok;
+}
+
+export function isHardcodedAdmin(): boolean {
+  return sessionStorage.getItem(ADMIN_FLAG) === "1";
+}
+
+export function adminLogout(): void {
+  sessionStorage.removeItem(ADMIN_FLAG);
+}
+
 /**
  * Checks whether a user has an admin role.
  *
@@ -82,7 +101,6 @@ export type ApplicationStatus = "approved" | "rejected";
  * controlling the UI.
  */
 export async function isAdmin(userId: string): Promise<boolean> {
-  if (!isFirebaseConfigured) return false;
   try {
     const snapshot = await getDoc(doc(db, "user_roles", userId));
     return snapshot.exists() && snapshot.data().role === "admin";
@@ -106,14 +124,6 @@ export async function fetchAdminWorkspace(): Promise<{
   data: AdminWorkspace | null;
   error: string | null;
 }> {
-  if (!isFirebaseConfigured) {
-    return {
-      data: null,
-      error:
-        "Firebase is not configured yet. Add the Firebase environment variables before loading the admin workspace.",
-    };
-  }
-
   try {
     const [
       applicationsSnapshot,
@@ -212,10 +222,6 @@ export async function reviewApplication(
   status: ApplicationStatus,
   reviewerId: string,
 ): Promise<string | null> {
-  if (!isFirebaseConfigured) {
-    return "Firebase is not configured yet.";
-  }
-
   try {
     await updateDoc(doc(db, "applications", id), {
       status,
@@ -239,10 +245,6 @@ export async function issueCertification(
   issuedBy: string,
   title: string,
 ): Promise<string | null> {
-  if (!isFirebaseConfigured) {
-    return "Firebase is not configured yet.";
-  }
-
   try {
     const certificateCode = `HRX-${crypto
       .randomUUID()

@@ -1,5 +1,4 @@
 import { Amoeba, useRegistrationDialog } from "@/components/layout/Layout";
-import { RocketSpot } from "./RocketSpot";
 import { setRegisterHover } from "@/utils/effects";
 import { useGlitchTriggers } from "@/hooks/useGlitchTriggers";
 import { useScrollDissolve } from "@/hooks/useScrollDissolve";
@@ -124,14 +123,6 @@ const ShieldIcon = (
 );
 
 /* --------------------------------- data ---------------------------------- */
-
-const tracks = [
-  { title: "AI for Health", body: "Apply machine learning to diagnostics, triage, and clinical decision support.", icon: BrainIcon },
-  { title: "Mental Health", body: "Build tools that support emotional wellbeing and widen access to care.", icon: PulseIcon },
-  { title: "Biotech", body: "Prototype at the intersection of hardware, wetware, and data.", icon: DnaIcon },
-  { title: "Accessibility", body: "Design technology that works for every body and every mind.", icon: AccessIcon },
-  { title: "Health Data & Privacy", body: "Make patient data secure, portable, and genuinely useful at the point of care.", icon: ShieldIcon },
-];
 
 const prizes = [
   { place: "1st Place", amount: "Best Translational Science", body: "For the team moving discovery to bedside fastest." },
@@ -278,23 +269,7 @@ export const Content = () => {
         </div>
       </section>
 
-      <Chapter id="tracks" title="Tracks" sub="Five ways to change care" />
-
-      {tracks.map((t, i) => {
-        return (
-          <section className={`panel spotlight${i % 2 === 1 ? " flip" : ""}`} key={t.title}>
-            <div>
-              <p className="spotlight-index">{String(i + 1).padStart(2, "0")}</p>
-              <p className="spotlight-tag">Track {i + 1} of {tracks.length}</p>
-              <h3>{t.title}</h3>
-              <p>{t.body}</p>
-            </div>
-            <div className="spotlight-art">{t.icon}</div>
-          </section>
-        )
-      })}
-
-      <Chapter id="prizes" title="Prizes" sub="Five first-place awards" />
+      <Chapter id="prizes" title="Track & Prizes" sub="Five first-place awards" />
 
 
       {prizes.map((p, i) => (
@@ -373,24 +348,6 @@ export const Content = () => {
       </section>
 
       <section className="panel cta-section" id="register">
-        <RocketSpot
-          index={13}
-          group={1}
-          art={{ kind: "standing" }}
-          at={[25, 73]}
-          size={115}
-          bubbleSide="right"
-          bubble="Ready? Sign up right here!"
-        />
-        <RocketSpot
-          index={14}
-          group={1}
-          art={{ kind: "rocket", pose: "wave", facing: "right" }}
-          at={[90, 33]}
-          size={135}
-        />
-
-
         <Amoeba tone="crimson" size="md" style={{ top: "12%", left: "6%", animationDelay: "-4s, -2s" }} />
         <Amoeba tone="violet" size="sm" style={{ bottom: "14%", right: "8%", animationDelay: "-9s, -5s" }} />
         <p className="eyebrow" style={{ textAlign: "center" }}>Join the response team</p>

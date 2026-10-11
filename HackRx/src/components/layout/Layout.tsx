@@ -63,8 +63,7 @@ export { useRegistrationDialog };
 /* ================================== nav ================================== */
 
 const LINKS = [
-  { id: "tracks", label: "Tracks" },
-  { id: "prizes", label: "Prizes" },
+  { id: "prizes", label: "Track & Prizes" },
   { id: "timeline", label: "Timeline" },
   { id: "faq", label: "FAQ" },
   { id: "team", label: "About" },
@@ -233,10 +232,10 @@ export const PortalNav = () => {
   const { isAdmin } = useAdmin();
   const portalLinks = isAdmin
     ? [
-        { to: "/", label: "Home" },
-        { to: "/admin", label: "Dashboard" },
-        { to: "/account", label: "Account" },
-      ]
+      { to: "/", label: "Home" },
+      { to: "/admin", label: "Dashboard" },
+      { to: "/account", label: "Account" },
+    ]
     : PORTAL_LINKS;
 
   const onLogout = async () => {

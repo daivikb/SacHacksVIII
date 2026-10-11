@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { adminLogout } from "@/services/admin.service";
 
 import {
   GoogleAuthProvider,
@@ -25,7 +26,7 @@ import {
   setDoc,
 } from "firebase/firestore";
 
-import { auth, db, isFirebaseConfigured } from "@/integrations/firebase/client";
+import { auth, db } from "@/integrations/firebase/client";
 
 export const signUpSchema = z
   .object({
@@ -77,43 +78,42 @@ export interface Profile {
 }
 
 /**
- * Returns a friendly error if Firebase has not been configured yet.
- */
-function configurationError(): string | null {
-  if (!isFirebaseConfigured) {
-    return "Firebase is not configured yet. Add the Firebase environment variables before using authentication.";
-  }
-
-  return null;
-}
-
-/**
  * Creates a Firebase Authentication account and an initial Firestore profile.
  */
 export async function signUp(values: SignUpValues): Promise<string | null> {
-  const configError = configurationError();
-  if (configError) return configError;
-
   try {
+    console.log("1. Starting signup");
+
     const credential = await createUserWithEmailAndPassword(
       auth,
       values.email.trim(),
       values.password,
     );
 
-    await setDoc(doc(db, "users", credential.user.uid), {
+    console.log("2. Auth user created:", credential.user.uid);
+    console.log("3. Firestore project:", db.app.options.projectId);
+
+    const userRef = doc(db, "users", credential.user.uid);
+
+    console.log("4. Attempting Firestore write");
+
+    await setDoc(userRef, {
+      user_uid: credential.user.uid,
       email: credential.user.email ?? values.email.trim(),
-      full_name: null,
-      username: null,
       created_at: serverTimestamp(),
       updated_at: serverTimestamp(),
     });
 
+    console.log("5. Firestore write completed");
+
+    const snapshot = await getDoc(userRef);
+    console.log("6. Document exists:", snapshot.exists());
+
     return null;
   } catch (error) {
-    return error instanceof Error
-      ? error.message
-      : "Unable to create your account";
+    const e = error as { code?: string; message?: string };
+    console.error("SIGNUP DEBUG ERROR:", e.code, e.message, error);
+    return e.message ?? "Unable to create your account";
   }
 }
 
@@ -128,9 +128,6 @@ export async function signUp(values: SignUpValues): Promise<string | null> {
  * function once the Firebase project and Functions layer exist.
  */
 export async function signIn(values: LoginValues): Promise<string | null> {
-  const configError = configurationError();
-  if (configError) return configError;
-
   const identifier = values.email.trim();
 
   if (!identifier.includes("@")) {
@@ -156,16 +153,27 @@ export async function signIn(values: LoginValues): Promise<string | null> {
  * Signs in with Google using Firebase Authentication.
  */
 export async function signInWithGoogle(): Promise<string | null> {
-  const configError = configurationError();
-  if (configError) return configError;
-
   try {
     const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(auth, provider);
+    const user = result.user;
 
-    await signInWithPopup(auth, provider);
+    const userRef = doc(db, "users", user.uid);
+    const snapshot = await getDoc(userRef);
+
+    // Create the profile only on first Google sign-in
+    if (!snapshot.exists()) {
+      await setDoc(userRef, {
+        user_uid: user.uid,
+        email: user.email,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      });
+    }
 
     return null;
   } catch (error) {
+    console.error("Google sign-in failed:", error);
     return error instanceof Error
       ? error.message
       : "Unable to sign in with Google";
@@ -178,9 +186,6 @@ export async function signInWithGoogle(): Promise<string | null> {
 export async function sendPasswordReset(
   values: ForgotValues,
 ): Promise<string | null> {
-  const configError = configurationError();
-  if (configError) return configError;
-
   try {
     await sendPasswordResetEmail(auth, values.email.trim(), {
       url: `${window.location.origin}/account`,
@@ -198,8 +203,7 @@ export async function sendPasswordReset(
  * Signs out the current Firebase user.
  */
 export async function signOut(): Promise<void> {
-  if (!isFirebaseConfigured) return;
-
+  adminLogout();
   await firebaseSignOut(auth);
 }
 
@@ -209,8 +213,6 @@ export async function signOut(): Promise<void> {
 export async function fetchProfile(
   userId: string,
 ): Promise<Profile | null> {
-  if (!isFirebaseConfigured) return null;
-
   try {
     const snapshot = await getDoc(doc(db, "users", userId));
 
@@ -240,9 +242,6 @@ export async function updateProfile(
   userId: string,
   values: ProfileValues,
 ): Promise<string | null> {
-  const configError = configurationError();
-  if (configError) return configError;
-
   try {
     await setDoc(
       doc(db, "users", userId),
@@ -272,9 +271,6 @@ export async function updateProfile(
 export async function updatePassword(
   password: string,
 ): Promise<string | null> {
-  const configError = configurationError();
-  if (configError) return configError;
-
   if (!auth.currentUser) {
     return "You must be signed in to change your password.";
   }
@@ -295,9 +291,6 @@ export async function updatePassword(
 export async function updateEmail(
   email: string,
 ): Promise<string | null> {
-  const configError = configurationError();
-  if (configError) return configError;
-
   if (!auth.currentUser) {
     return "You must be signed in to change your email.";
   }

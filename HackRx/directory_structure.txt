@@ -36571,7 +36571,8 @@
 │   │       ├── mascot-standing.png
 │   │       ├── mascot-yellow-main.png
 │   │       ├── rocket-plain-purple.png
-│   │       └── rocket-plain-yellow.png
+│   │       ├── rocket-plain-yellow.png
+│   │       └── sachackslogo.png
 │   ├── components
 │   │   ├── layout
 │   │   │   ├── Layout.tsx
@@ -36596,12 +36597,10 @@
 │   │   │   └── components
 │   │   │       └── AuthDialog.tsx
 │   │   └── home
-│   │       ├── components
-│   │       │   ├── Countdown.tsx
-│   │       │   ├── Hero.tsx
-│   │       │   ├── RocketSpot.tsx
-│   │       │   └── Sections.tsx
-│   │       └── spot-config.ts
+│   │       └── components
+│   │           ├── Countdown.tsx
+│   │           ├── Hero.tsx
+│   │           └── Sections.tsx
 │   ├── hooks
 │   │   ├── use-toast.ts
 │   │   ├── useAdmin.ts
@@ -36635,4 +36634,4 @@
 ├── tsconfig.node.json
 └── vite.config.ts
 
-5364 directories, 31272 files
+5364 directories, 31271 files
