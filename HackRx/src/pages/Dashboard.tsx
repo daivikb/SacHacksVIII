@@ -9,14 +9,19 @@ import { useGlitchTriggers } from "@/hooks/useGlitchTriggers";
 import { fetchApplicationStatus, type ApplicationStatus } from "@/services/application.service";
 import { useAcceptance } from "@/hooks/useAcceptance";
 
+// Midnight Pacific at the start of each day. November dates use PST (UTC-8):
+// daylight saving ends Nov 1, 2026.
+const APPLICATIONS_CLOSE = "2026-11-08T00:00:00-08:00";
+const EVENT_START = "2026-11-15T00:00:00-08:00";
+
 /** "loading" until Firestore answers; null means the user hasn't applied. */
 type StatusState = ApplicationStatus | null | "loading";
 
 const STATUS_DISPLAY: Record<ApplicationStatus | "none", { label: string; dot: string }> = {
-  none: { label: "Not submitted", dot: "bg-red-400" },
+  none: { label: "Not submitted", dot: "bg-orange-400" },
   pending: { label: "Pending...", dot: "bg-blue-400" },
   approved: { label: "Accepted", dot: "bg-green-400" },
-  rejected: { label: "Not accepted", dot: "bg-white/40" },
+  rejected: { label: "DECLINED 🫵😂", dot: "bg-red-400" },
 };
 
 const Dashboard = () => {
@@ -117,7 +122,10 @@ const Dashboard = () => {
         <span className="eyebrow">Hacker Hub</span>
         <h1 className="chapter-title">Welcome, {name}</h1>
         {loading ? loadingView : accepted ? acceptedView : waitingView}
-        <Countdown />
+        {/* Not accepted yet: count down to the application deadline. Accepted: to the event. */}
+        {!loading && (accepted
+          ? <Countdown label="Event starts in" target={EVENT_START} />
+          : <Countdown label="Applications close in" target={APPLICATIONS_CLOSE} />)}
       </section>
     </Layout>
   );
