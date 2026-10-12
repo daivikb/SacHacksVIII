@@ -342,13 +342,13 @@ export const AuthDialog = ({ open, mode, onOpenChange, onModeChange }: AuthDialo
           <div className="space-y-4 pt-2 venom-contact">
             <dl>
               <dt>Email</dt>
-              <dd>hello@hackrx.org</dd>
+              <dd>contact@sachacks.io</dd>
               <dt>Sponsorship</dt>
-              <dd>sponsors@hackrx.org</dd>
+              <dd>finance@sachacks.io</dd>
               <dt>Press</dt>
-              <dd>press@hackrx.org</dd>
+              <dd>contact@sachacks.io</dd>
               <dt>Where</dt>
-              <dd>UC Davis, Davis, CA — October 17, 2026</dd>
+              <dd>UC Davis, Davis, CA — November 15th, 2026</dd>
             </dl>
             <Button
               type="button"

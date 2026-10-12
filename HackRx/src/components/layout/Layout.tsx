@@ -17,6 +17,7 @@ import { AuthDialog } from "@/features/auth/components/AuthDialog";
 import { useAuth } from "@/context/auth-context";
 import { signOut } from "@/services/auth.service";
 import { useAdmin } from "@/hooks/useAdmin";
+import { useAcceptance } from "@/hooks/useAcceptance";
 import { Button } from "@/components/ui/button";
 import "@/styles/hackrx.css";
 
@@ -230,13 +231,14 @@ export const PortalNav = () => {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { isAdmin } = useAdmin();
+  const { accepted } = useAcceptance();
   const portalLinks = isAdmin
     ? [
       { to: "/", label: "Home" },
       { to: "/admin", label: "Dashboard" },
-      { to: "/admin/account", label: "Account" },
     ]
-    : PORTAL_LINKS;
+    // Teams only appears once the participant is accepted (has a team_id).
+    : PORTAL_LINKS.filter((l) => l.to !== "/teams" || accepted);
 
   const onLogout = async () => {
     await signOut();

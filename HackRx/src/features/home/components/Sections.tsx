@@ -155,24 +155,24 @@ const sponsorTiers = [
     key: "jubilee",
     label: "Jubilee",
     items: [
-      { name: "M.S. Program of Medical Device Development Program", logo: "/sponsors/medical-device.png" },
+      { name: "M.S. Program of Medical Device Development Program", logo: "/sponsors/medical-device.png", url: "https://bme.ucdavis.edu/graduate/medical-device" },
     ],
   },
   {
     key: "platinum",
     label: "Platinum",
     items: [
-      { name: "UC Davis College of Letters & Sciences", logo: "/sponsors/letters-sciences.png" },
-      { name: "UC Davis Graduate School of Management MSBA", logo: "/sponsors/gsm-msba.png" },
-      { name: "UC Davis Health Betty Irene Moore School of Nursing", logo: "/sponsors/nursing.png" },
+      { name: "UC Davis College of Letters & Sciences", logo: "/sponsors/letters-sciences.png", url: "https://lettersandscience.ucdavis.edu/" },
+      { name: "UC Davis Graduate School of Management MSBA", logo: "/sponsors/gsm-msba.png", url: "https://gsm.ucdavis.edu/master-science-business-analytics" },
+      { name: "UC Davis Health Betty Irene Moore School of Nursing", logo: "/sponsors/nursing.png", url: "https://health.ucdavis.edu/nursing/" },
     ],
   },
   {
     key: "gold",
     label: "Gold",
     items: [
-      { name: "NordVPN", logo: "/sponsors/nordvpn.svg" },
-      { name: "UC Davis Department of Computer Science", logo: "/sponsors/computer-science.png" },
+      { name: "NordVPN", logo: "/sponsors/nordvpn.svg", url: "https://nordvpn.com/" },
+      { name: "UC Davis Department of Computer Science", logo: "/sponsors/computer-science.png", url: "https://cs.ucdavis.edu/" },
     ],
   },
 ];
@@ -286,9 +286,9 @@ export const Content = () => {
             >
               <div className="tier-row">
                 {tier.items.map((s) => (
-                  <div className="sponsor-chip" key={s.name}>
+                  <a className="sponsor-chip" key={s.name} href={s.url} target="_blank" rel="noopener noreferrer">
                     <img src={s.logo} alt={s.name} loading="lazy" />
-                  </div>
+                  </a>
                 ))}
               </div>
             </div>
