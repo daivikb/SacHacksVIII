@@ -13,8 +13,12 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
+  query,
+  runTransaction,
   serverTimestamp,
   updateDoc,
+  where,
 } from "firebase/firestore";
 
 import {
@@ -232,8 +236,36 @@ export async function fetchAdminWorkspace(): Promise<{
   };
 }
 
+const TEAM_CODE_LENGTH = 6;
+const TEAM_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+/** A random 6-character code of capital letters and digits. */
+function randomTeamCode(): string {
+  let code = "";
+  while (code.length < TEAM_CODE_LENGTH) {
+    const [byte] = crypto.getRandomValues(new Uint8Array(1));
+    // 252 is the largest multiple of 36 that fits in a byte; skipping the rest keeps it unbiased.
+    if (byte < 252) code += TEAM_CODE_ALPHABET[byte % TEAM_CODE_ALPHABET.length];
+  }
+  return code;
+}
+
+/** A team code that no user document holds yet. */
+async function uniqueTeamCode(): Promise<string> {
+  for (;;) {
+    const code = randomTeamCode();
+    const taken = await getDocs(
+      query(collection(db, "users"), where("team_id", "==", code), limit(1)),
+    );
+    if (taken.empty) return code;
+  }
+}
+
 /**
  * Reviews an application.
+ *
+ * Approving also gives the applicant a unique team code in `team_id`, unless
+ * they already have one.
  */
 export async function reviewApplication(
   id: string,
@@ -242,10 +274,24 @@ export async function reviewApplication(
 ): Promise<string | null> {
   try {
     // `id` is the applicant's uid; the application is a field on their user doc.
-    await updateDoc(doc(db, "users", id), {
+    const ref = doc(db, "users", id);
+    const review = {
       "application.status": status,
       "application.reviewed_by": reviewerId,
       "application.reviewed_at": serverTimestamp(),
+    };
+
+    if (status !== "approved") {
+      await updateDoc(ref, review);
+      return null;
+    }
+
+    const code = await uniqueTeamCode();
+    await runTransaction(db, async (tx) => {
+      const snapshot = await tx.get(ref);
+      // Re-approving must not replace a code the applicant may already have shared.
+      const hasCode = !!snapshot.data()?.team_id;
+      tx.update(ref, hasCode ? review : { ...review, team_id: code });
     });
 
     return null;

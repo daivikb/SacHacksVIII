@@ -6,7 +6,7 @@
  *
  * Still placeholders, because nothing in Firestore backs them yet — each is
  * marked PLACEHOLDER inline:
- *   · team membership + team leaders (teams collection has no member list)
+ *   · team leaders (no leader field anywhere)
  *   · the "Waiting on you" request queue
  *   · team bulk actions (no service functions exist for them)
  *   · the awards list, event dates/venue and team size cap (hardcoded constants)
@@ -83,12 +83,16 @@ interface Row {
   applicationId: string | null;
   /** Null when an application has no matching user account — can't be certified. */
   memberId: string | null;
+  /** The `team_id` on their user document, or null when they have none. */
+  teamId: string | null;
 }
 
 interface TeamRow {
   id: string;
   name: string;
   track: string | null;
+  /** Everyone on the roster whose `team_id` is this team. */
+  members: Row[];
 }
 
 interface DemoRow {
@@ -467,6 +471,11 @@ const AdminDashboard = () => {
       const email = text(m.email);
       const app = email ? appByEmail.get(email.toLowerCase()) : undefined;
       if (app) matchedApps.add(app.id);
+      // Organisers aren't participants, so they (and any application of theirs) stay off the roster.
+      if (m.admin === true) {
+        matchedApps.add(m.id);
+        return;
+      }
       rows.push({
         key: `member:${m.id}`,
         name: text(m.full_name, text(m.username, "New member")),
@@ -476,6 +485,7 @@ const AdminDashboard = () => {
         cert: certByUser.get(m.id) ?? null,
         applicationId: app ? app.id : null,
         memberId: m.id,
+        teamId: text(m.team_id) || null,
       });
     });
 
@@ -491,21 +501,30 @@ const AdminDashboard = () => {
         cert: null,
         applicationId: a.id,
         memberId: null,
+        teamId: null,
       });
     });
 
     return rows.sort((x, y) => x.name.localeCompare(y.name));
   }, [workspace]);
 
-  const teams = useMemo<TeamRow[]>(
-    () =>
-      workspace.teams.map((t) => ({
-        id: t.id,
-        name: text(t.name, "Unnamed team"),
-        track: text(t.track) || null,
-      })),
-    [workspace.teams],
-  );
+  // A team is any `team_id` held by someone on the roster, plus any teams
+  // document. The document, when there is one, supplies the name and track.
+  const teams = useMemo<TeamRow[]>(() => {
+    const byId = new Map<string, TeamRow>();
+    workspace.teams.forEach((t) => {
+      byId.set(t.id, { id: t.id, name: text(t.name, `Team ${t.id}`), track: text(t.track) || null, members: [] });
+    });
+    roster.forEach((r) => {
+      if (!r.teamId) return;
+      const team = byId.get(r.teamId) ?? { id: r.teamId, name: `Team ${r.teamId}`, track: null, members: [] };
+      team.members.push(r);
+      byId.set(r.teamId, team);
+    });
+    return Array.from(byId.values()).sort((x, y) => x.name.localeCompare(y.name));
+  }, [workspace.teams, roster]);
+
+  const teamNames = useMemo(() => new Map(teams.map((t) => [t.id, t.name])), [teams]);
 
   const demos = useMemo<DemoRow[]>(
     () =>
@@ -540,7 +559,9 @@ const AdminDashboard = () => {
   const visibleTeams = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return teams;
-    return teams.filter((t) => [t.name, t.track ?? ""].some((f) => f.toLowerCase().includes(q)));
+    return teams.filter((t) =>
+      [t.name, t.id, t.track ?? "", ...t.members.map((m) => m.name)].some((f) => f.toLowerCase().includes(q)),
+    );
   }, [teams, query]);
 
   const visibleDemos = useMemo(() => {
@@ -766,7 +787,7 @@ const AdminDashboard = () => {
 
   const titles: Record<Lens, [string, string]> = {
     signups: ["Roster", `${plural(stats.total, "hacker", "hackers")} · ${stats.awaiting} awaiting a decision`],
-    teams: ["Formed teams", `${plural(stats.teams, "team", "teams")} · membership not tracked yet`],
+    teams: ["Formed teams", `${plural(stats.teams, "team", "teams")} · from each hacker's team code`],
     demos: ["Demo submissions", plural(stats.demos, "submission", "submissions")],
     certs: ["Roster", `${stats.accepted} accepted · ${plural(stats.issued, "certificate", "certificates")} issued`],
   };
@@ -1046,13 +1067,10 @@ const AdminDashboard = () => {
                               <td style={{ ...td, opacity: dim("signups") }}>
                                 <Pill label={st.label} bg={st.bg} fg={st.fg} />
                               </td>
-                              {/* PLACEHOLDER — this cell should show the hacker's team name (plus a LEADER
-                                  tag if they lead it). It needs membership stored in Firestore —
-                                  a `members` array on the team or a `team_id` on the user.
-                                  Seen: Signups and Certificates tabs → roster table → TEAM
-                                  column ("Not tracked" on every row). */}
                               <td style={{ ...td, opacity: dim("teams") }}>
-                                <span style={{ color: C.ink35, fontSize: 13.5 }}>Not tracked</span>
+                                {r.teamId
+                                  ? <span style={{ fontSize: 13.5 }}>{teamNames.get(r.teamId) ?? r.teamId}</span>
+                                  : <span style={{ color: C.ink35, fontSize: 13.5 }}>No team</span>}
                               </td>
                               <td style={{ ...td, opacity: dim("certs") }}>
                                 {r.cert
@@ -1146,12 +1164,13 @@ const AdminDashboard = () => {
                               <td style={td}>
                                 <Pill label={t.track ?? "Track not selected"} bg={tt.bg} fg={tt.fg} />
                               </td>
-                              {/* PLACEHOLDER — this cell should read "<member count> of 4" with the
-                                  members' first names. The count is a dash because the teams
-                                  collection doesn't record who is on each team.
-                                  Seen: Teams tab → main table → MEMBERS column ("— of 4"). */}
                               <td style={td}>
-                                <span style={{ color: C.ink35, fontSize: 13.5 }}>— of {MAX_TEAM_SIZE}</span>
+                                <span style={{ fontSize: 13.5 }}>{t.members.length} of {MAX_TEAM_SIZE}</span>
+                                {t.members.length > 0 && (
+                                  <span style={{ color: C.ink45, fontSize: 13 }}>
+                                    {" · "}{t.members.map((m) => m.name.split(" ")[0]).join(", ")}
+                                  </span>
+                                )}
                               </td>
                             </tr>
                           );
@@ -1269,11 +1288,9 @@ const AdminDashboard = () => {
                       </span>
                     </DetailRow>
                     <DetailRow label="Team">
-                      {/* PLACEHOLDER — should show the focused hacker's team and whether they
-                          lead it. Same missing data: no team membership in Firestore.
-                          Seen: Signups and Certificates tabs → click a row → right-hand
-                          detail panel → "Team" row. */}
-                      <span style={{ color: C.ink35 }}>Membership isn’t stored in Firestore yet</span>
+                      <span style={{ color: person?.teamId ? C.ink : C.ink35 }}>
+                        {person ? (person.teamId ? teamNames.get(person.teamId) ?? person.teamId : "No team") : "—"}
+                      </span>
                     </DetailRow>
                     <DetailRow label="Account" last>
                       <span style={{ fontFamily: MONO, fontSize: 12.5, color: C.ink60 }}>
@@ -1333,16 +1350,19 @@ const AdminDashboard = () => {
                     </div>
                   </div>
 
-                  {/* PLACEHOLDER — this block should list the focused team's members (name,
-                      school, signup status, LEADER tag). It shows a note instead because
-                      the teams collection has no member list to read.
-                      Seen: Teams tab → click a team → right-hand detail panel, body
-                      text under the team name. */}
-                  <div style={{ padding: "36px 20px", textAlign: "center", fontSize: 13, color: C.ink50, lineHeight: 1.6 }}>
-                    Team membership isn’t stored yet.<br />
-                    Add a <code style={{ fontFamily: MONO, fontSize: 12.5 }}>members</code> array (or a{" "}
-                    <code style={{ fontFamily: MONO, fontSize: 12.5 }}>team_id</code> on each user) to list them here.
-                  </div>
+                  {team && team.members.length > 0 ? (
+                    <div style={{ padding: "6px 20px" }}>
+                      {team.members.map((m, i) => (
+                        <DetailRow key={m.key} label={m.name} last={i === team.members.length - 1}>
+                          <span style={{ color: C.ink60, fontSize: 13 }}>{m.email}</span>
+                        </DetailRow>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ padding: "36px 20px", textAlign: "center", fontSize: 13, color: C.ink50, lineHeight: 1.6 }}>
+                      {team ? "Nobody on the roster has this team code." : "Pick a row to see its members."}
+                    </div>
+                  )}
 
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", padding: "16px 20px", borderTop: `1px solid ${C.line}` }}>
                     {/* PLACEHOLDER — should open a mailto to every member of the focused
