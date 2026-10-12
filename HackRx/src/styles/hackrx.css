@@ -79,7 +79,7 @@
   --text-lg: clamp(1.15rem, 1.02rem + .6vw, 1.5rem);
   --text-h3: clamp(2rem, 1.2rem + 3.8vw, 4.6rem);
   --text-h2: clamp(2rem, 1.3rem + 3.3vw, 4rem);
-  --text-display: clamp(3rem, .6rem + 13vw, 12.5rem);
+  --text-display: clamp(3rem, .6rem + 10vw, 12.5rem);
   --text-numeral: clamp(2.75rem, 1rem + 8.6vw, 7rem);
   --text-index: clamp(4rem, 1.4rem + 12vw, 12rem);
 }
@@ -1668,7 +1668,7 @@ a {
 .chapter .chapter-sub {
   margin: var(--space-sm) 0 0;
   font-family: var(--mono);
-  font-size: clamp(13px, 1.05vw, 16px);
+  font-size: clamp(18px, 1.05vw, 16px);
   letter-spacing: .2em;
   text-transform: uppercase;
   color: rgba(237, 234, 222, .6);
@@ -3074,7 +3074,8 @@ html.low-end .page-decor .decor-star {
   align-items: center;
   justify-content: center;
   min-height: 100svh;
-  padding-block: calc(var(--space-xl) + 4rem) var(--space-xl);
+  /* padding-block: calc(var(--space-xl) + 4rem) var(--space-xl); */
+  padding: 0px;
   overflow: hidden;
   text-align: center;
   background-color: var(--paper);
