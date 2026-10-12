@@ -236,7 +236,6 @@ export const PortalNav = () => {
     ? [
       { to: "/", label: "Home" },
       { to: "/admin", label: "Dashboard" },
-      { to: "/admin/account", label: "Account" },
     ]
     // Teams only appears once the participant is accepted (has a team_id).
     : PORTAL_LINKS.filter((l) => l.to !== "/teams" || accepted);
