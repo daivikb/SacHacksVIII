@@ -1,17 +1,22 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/auth-context";
-import { isAdmin, isHardcodedAdmin } from "@/services/admin.service";
+import { isAdmin } from "@/services/admin.service";
 
+/** Whether the signed-in user's `users/{uid}` document has `admin: true`. */
 export function useAdmin() {
   const { user, loading: authLoading } = useAuth();
-  // The role lookup is stored with the uid it belongs to, so a result from a
-  // previous session can never be read as the current user's.
-  const [checked, setChecked] = useState<{ uid: string; allowed: boolean } | null>(null);
-  const hardcoded = isHardcodedAdmin();
-  const uid = user?.uid ?? null;
+  const [admin, setAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (hardcoded || authLoading || !uid) return;
+    let active = true;
+
+    if (authLoading) return;
+    if (!user) {
+      setAdmin(false);
+      setLoading(false);
+      return;
+    }
 
     let active = true;
     void isAdmin(uid).then((allowed) => {
@@ -22,9 +27,5 @@ export function useAdmin() {
 
   if (hardcoded) return { isAdmin: true, loading: false };
 
-  const resolved = !uid || checked?.uid === uid;
-  return {
-    isAdmin: !!uid && checked?.uid === uid && checked.allowed,
-    loading: authLoading || !resolved,
-  };
+  return { isAdmin: admin, loading: authLoading || loading };
 }
