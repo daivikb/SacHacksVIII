@@ -7,13 +7,18 @@
  */
 
 import {
+  Timestamp,
+  arrayUnion,
   collection,
   doc,
   getDoc,
   getDocs,
+  limit,
+  query,
+  runTransaction,
   serverTimestamp,
   updateDoc,
-  addDoc,
+  where,
 } from "firebase/firestore";
 
 import {
@@ -142,11 +147,10 @@ async function readCollection<T extends { id: string }>(
  *
  * Firestore collections replace the old Supabase tables:
  *
- * users (applications are the `application` field on each user)
+ * users (applications are the `application` field on each user, and
+ *        certificates the `certifications` list on each user)
  * teams
  * demos
- * users
- * certifications
  *
  * Each collection is read independently, so one that is empty, missing or
  * denied by Security Rules does not hide the others. `error` describes
@@ -160,7 +164,6 @@ export async function fetchAdminWorkspace(): Promise<{
     ["teams", "formed_at"],
     ["demos", "created_at"],
     ["users", "created_at"],
-    ["certifications", "issued_at"],
   ] as const;
 
   const results = await Promise.allSettled(
@@ -207,20 +210,62 @@ export async function fetchAdminWorkspace(): Promise<{
     }))
     .sort((x, y) => toMillis(y.created_at) - toMillis(x.created_at));
 
+  // Certificates are a list on the holder's user document. Each one is
+  // flattened into its own row carrying the holder's uid.
+  const certifications = members
+    .flatMap((m) =>
+      (Array.isArray(m.certifications) ? m.certifications : [])
+        .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+        .map((c): Certification => ({
+          ...c,
+          id: `${m.id}:${String(c.certificate_code ?? c.title)}`,
+          user_id: m.id,
+        })),
+    )
+    .sort((x, y) => toMillis(y.issued_at) - toMillis(x.issued_at));
+
   return {
     data: {
       applications,
       teams: rows[0] as Team[],
       demos: rows[1] as Demo[],
       members,
-      certifications: rows[3] as Certification[],
+      certifications,
     },
     error,
   };
 }
 
+const TEAM_CODE_LENGTH = 6;
+const TEAM_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+/** A random 6-character code of capital letters and digits. */
+function randomTeamCode(): string {
+  let code = "";
+  while (code.length < TEAM_CODE_LENGTH) {
+    const [byte] = crypto.getRandomValues(new Uint8Array(1));
+    // 252 is the largest multiple of 36 that fits in a byte; skipping the rest keeps it unbiased.
+    if (byte < 252) code += TEAM_CODE_ALPHABET[byte % TEAM_CODE_ALPHABET.length];
+  }
+  return code;
+}
+
+/** A team code that no user document holds yet. */
+async function uniqueTeamCode(): Promise<string> {
+  for (;;) {
+    const code = randomTeamCode();
+    const taken = await getDocs(
+      query(collection(db, "users"), where("team_id", "==", code), limit(1)),
+    );
+    if (taken.empty) return code;
+  }
+}
+
 /**
  * Reviews an application.
+ *
+ * Approving also gives the applicant a unique team code in `team_id`, unless
+ * they already have one.
  */
 export async function reviewApplication(
   id: string,
@@ -229,10 +274,24 @@ export async function reviewApplication(
 ): Promise<string | null> {
   try {
     // `id` is the applicant's uid; the application is a field on their user doc.
-    await updateDoc(doc(db, "users", id), {
+    const ref = doc(db, "users", id);
+    const review = {
       "application.status": status,
       "application.reviewed_by": reviewerId,
       "application.reviewed_at": serverTimestamp(),
+    };
+
+    if (status !== "approved") {
+      await updateDoc(ref, review);
+      return null;
+    }
+
+    const code = await uniqueTeamCode();
+    await runTransaction(db, async (tx) => {
+      const snapshot = await tx.get(ref);
+      // Re-approving must not replace a code the applicant may already have shared.
+      const hasCode = !!snapshot.data()?.team_id;
+      tx.update(ref, hasCode ? review : { ...review, team_id: code });
     });
 
     return null;
@@ -244,7 +303,8 @@ export async function reviewApplication(
 }
 
 /**
- * Issues a certification to a user.
+ * Issues a certification to a user, by adding it to the `certifications`
+ * list on their user document.
  */
 export async function issueCertification(
   userId: string,
@@ -257,12 +317,14 @@ export async function issueCertification(
       .slice(0, 8)
       .toUpperCase()}`;
 
-    await addDoc(collection(db, "certifications"), {
-      user_id: userId,
-      issued_by: issuedBy,
-      title,
-      certificate_code: certificateCode,
-      issued_at: serverTimestamp(),
+    // serverTimestamp() isn't allowed inside arrayUnion, hence the client clock.
+    await updateDoc(doc(db, "users", userId), {
+      certifications: arrayUnion({
+        issued_by: issuedBy,
+        title,
+        certificate_code: certificateCode,
+        issued_at: Timestamp.now(),
+      }),
     });
 
     return null;
