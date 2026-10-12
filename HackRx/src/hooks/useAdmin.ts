@@ -1,20 +1,15 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/auth-context";
-import { isAdmin, isHardcodedAdmin } from "@/services/admin.service";
+import { isAdmin } from "@/services/admin.service";
 
+/** Whether the signed-in user's `users/{uid}` document has `admin: true`. */
 export function useAdmin() {
   const { user, loading: authLoading } = useAuth();
-  const [admin, setAdmin] = useState(isHardcodedAdmin());
-  const [loading, setLoading] = useState(!isHardcodedAdmin());
+  const [admin, setAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
-
-    if (isHardcodedAdmin()) {
-      setAdmin(true);
-      setLoading(false);
-      return;
-    }
 
     if (authLoading) return;
     if (!user) {
@@ -23,14 +18,14 @@ export function useAdmin() {
       return;
     }
 
-    let active = true;
-    void isAdmin(uid).then((allowed) => {
-      if (active) setChecked({ uid, allowed });
+    setLoading(true);
+    void isAdmin(user.uid).then((allowed) => {
+      if (!active) return;
+      setAdmin(allowed);
+      setLoading(false);
     });
     return () => { active = false; };
-  }, [hardcoded, authLoading, uid]);
+  }, [authLoading, user]);
 
-  if (hardcoded) return { isAdmin: true, loading: false };
-
-  return { isAdmin: admin, loading: isHardcodedAdmin() ? false : authLoading || loading };
+  return { isAdmin: admin, loading: authLoading || loading };
 }
