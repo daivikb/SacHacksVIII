@@ -467,6 +467,11 @@ const AdminDashboard = () => {
       const email = text(m.email);
       const app = email ? appByEmail.get(email.toLowerCase()) : undefined;
       if (app) matchedApps.add(app.id);
+      // Organisers aren't participants, so they (and any application of theirs) stay off the roster.
+      if (m.admin === true) {
+        matchedApps.add(m.id);
+        return;
+      }
       rows.push({
         key: `member:${m.id}`,
         name: text(m.full_name, text(m.username, "New member")),
