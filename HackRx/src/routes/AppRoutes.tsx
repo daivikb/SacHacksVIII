@@ -9,6 +9,7 @@ import AdminAccount from "@/pages/AdminAccount";
 import TeamPlanning from "@/pages/TeamPlanning";
 import { useAuth } from "@/context/auth-context";
 import { useAdmin } from "@/hooks/useAdmin";
+import { useAcceptance } from "@/hooks/useAcceptance";
 import SignupPage from "@/pages/SignupPage";
 
 /** Gates the hacker hub behind an active session. */
@@ -22,6 +23,13 @@ const AdminOnly = ({ children }: { children: ReactElement }) => {
   const { isAdmin, loading } = useAdmin();
   if (loading) return null;
   return isAdmin ? children : <Navigate to="/" replace />;
+};
+
+/** Pages only accepted participants (users/{uid}.team_id set) can open. */
+const AcceptedOnly = ({ children }: { children: ReactElement }) => {
+  const { accepted, loading } = useAcceptance();
+  if (loading) return null;
+  return accepted ? children : <Navigate to="/dashboard" replace />;
 };
 
 /** Admins are organisers, not participants — send them to the admin workspace. */
@@ -76,7 +84,9 @@ export const AppRoutes = () => (
       path="/teams"
       element={
         <Protected>
-          <TeamPlanning />
+          <AcceptedOnly>
+            <TeamPlanning />
+          </AcceptedOnly>
         </Protected>
       }
     />

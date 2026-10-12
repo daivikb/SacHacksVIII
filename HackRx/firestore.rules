@@ -8,7 +8,10 @@ rules_version = '2';
 //   user_id    the account's uid
 //   email      the account's sign-in email (the admin roster matches
 //              applications to people by email, so it can't be spoofed)
-//   team_id    the team they're on, or null
+//   team_id    the team they're on, or null. Having one is what marks a
+//              participant as ACCEPTED in the app, so only admins can give a
+//              user their first team_id or take it away. Accepted users can
+//              switch between teams themselves.
 //   application  added once from /apply: every answer, status ("pending" |
 //              "approved" | "rejected"), created_at, and reviewed_by /
 //              reviewed_at once an admin decides. Applicants can't edit it
@@ -59,16 +62,19 @@ service cloud.firestore {
       return getAfter(userPath(uid)).data.get('team_id', null);
     }
 
-    // If team_id changes, the old team must no longer list the user (or be
-    // deleted) and the new team must list them.
+    // A user may only move from one team to another (team_id is the
+    // acceptance marker, so null -> team and team -> null are admin-only).
+    // The old team must no longer list them (or be deleted) and the new team
+    // must list them.
     function teamChangeIsConsistent(uid) {
       let before = resource.data.get('team_id', null);
       let after = request.resource.data.get('team_id', null);
       return before == after || (
-        (before == null
-          || !existsAfter(teamPath(before))
-          || !(uid in getAfter(teamPath(before)).data.members))
-        && (after == null || uid in getAfter(teamPath(after)).data.members)
+        before != null
+        && after != null
+        && (!existsAfter(teamPath(before))
+            || !(uid in getAfter(teamPath(before)).data.members))
+        && uid in getAfter(teamPath(after)).data.members
       );
     }
 
