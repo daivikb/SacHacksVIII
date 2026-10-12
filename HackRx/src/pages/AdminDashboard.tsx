@@ -546,6 +546,8 @@ const AdminDashboard = () => {
   const visibleRoster = useMemo(() => {
     const q = query.trim().toLowerCase();
     return roster.filter((r) => {
+      // Certificates only go to accepted hackers, so that tab lists nobody else.
+      if (lens === "certs" && r.signup !== "accepted") return false;
       if (q && ![r.name, r.email, r.school].some((f) => f.toLowerCase().includes(q))) return false;
       if (schoolFilter !== "All schools" && r.school !== schoolFilter) return false;
       if (statusFilter === "Awaiting decision" && r.signup !== "pending") return false;
@@ -554,7 +556,7 @@ const AdminDashboard = () => {
       if (statusFilter === "Certified" && !r.cert) return false;
       return true;
     });
-  }, [roster, query, statusFilter, schoolFilter]);
+  }, [roster, lens, query, statusFilter, schoolFilter]);
 
   const visibleTeams = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -605,7 +607,9 @@ const AdminDashboard = () => {
   );
 
   const award = AWARDS.find((a) => a.id === chosenAward) ?? AWARDS[0];
-  const person = roster.find((r) => r.key === focusedKey) ?? visibleRoster[0] ?? null;
+  // On the Certificates tab the detail panel can't show someone who isn't accepted.
+  const focusable = isCerts ? roster.filter((r) => r.signup === "accepted") : roster;
+  const person = focusable.find((r) => r.key === focusedKey) ?? visibleRoster[0] ?? null;
   const personStatus = statusTone(person ? person.signup : "none");
   const team = teams.find((t) => t.id === focusedTeamId) ?? visibleTeams[0] ?? null;
 
@@ -796,7 +800,7 @@ const AdminDashboard = () => {
     ? `Showing ${visibleTeams.length} of ${teams.length}`
     : isDemos
       ? `Showing ${visibleDemos.length} of ${demos.length}`
-      : `Showing ${visibleRoster.length} of ${roster.length}`;
+      : `Showing ${visibleRoster.length} of ${isCerts ? stats.accepted : roster.length}`;
 
   /* ---------------- Render ---------------- */
 
