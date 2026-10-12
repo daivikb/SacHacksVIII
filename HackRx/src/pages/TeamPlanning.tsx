@@ -3,10 +3,14 @@ import { CircleArrowRight, Crown, Hourglass, Send, X } from "lucide-react";
 import { Layout, Amoeba } from "@/components/layout/Layout";
 import { PortalDecor } from "@/components/layout/PortalDecor";
 import { useAuth } from "@/context/auth-context";
-import { fetchProfile, type Profile } from "@/services/auth.service";
+import { fetchTeamPlanning, type IncomingInvite, type TeamPerson } from "@/services/team.service";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-type Person = { email: string; owner: boolean; pending: boolean };
+type Person = TeamPerson;
+
+/** Email when readable, otherwise a short form of the uid. */
+const displayName = (p: Person) => p.email ?? `User ${p.id.slice(0, 8)}…`;
+const inviteLabel = (i: IncomingInvite) => i.ownerEmail ?? `Team ${i.teamId}`;
 
 // Owner + members + pending invites can't go past this.
 const MAX_TEAM_SIZE = 3;
@@ -81,12 +85,14 @@ const EmptyNote = ({ children }: { children: React.ReactNode }) => (
 
 const TeamSection = ({
     people,
+    loading,
     onRemove,
     autofill,
     onAutofillChange,
 }: {
     people: Person[];
-    onRemove: (email: string) => void;
+    loading: boolean;
+    onRemove: (id: string) => void;
     autofill: boolean;
     onAutofillChange: (checked: boolean) => void;
 }) => (
@@ -95,14 +101,18 @@ const TeamSection = ({
         className="flex-1 !h-auto"
         action={<AutofillToggle checked={autofill} onChange={onAutofillChange} />}
     >
-        {people.length === 0 ? (
+        {loading ? (
+            <EmptyNote>Loading your team…</EmptyNote>
+        ) : people.length === 0 ? (
             <EmptyNote>No teammates yet.</EmptyNote>
         ) : (
             <ul className="flex flex-col gap-2">
                 {people.map((person) => (
-                    <li key={person.email} className={rowClass}>
+                    <li key={person.id} className={rowClass}>
                         <span className="flex min-w-0 items-center gap-2">
-                            <span className="truncate">{person.email}</span>
+                            <span className="truncate" title={person.email ?? person.id}>
+                                {displayName(person)}
+                            </span>
                             {person.pending && (
                                 <Hourglass
                                     className="h-4 w-4 shrink-0 text-[var(--sv-yellow)]"
@@ -123,8 +133,8 @@ const TeamSection = ({
                                 type="button"
                                 className={removeBtnClass}
                                 title={person.pending ? "Cancel invitation" : "Remove member"}
-                                aria-label={`${person.pending ? "Cancel invitation for" : "Remove"} ${person.email}`}
-                                onClick={() => onRemove(person.email)}
+                                aria-label={`${person.pending ? "Cancel invitation for" : "Remove"} ${displayName(person)}`}
+                                onClick={() => onRemove(person.id)}
                             >
                                 <X className="h-5 w-5" strokeWidth={3} />
                             </button>
@@ -154,7 +164,7 @@ const SendInviteSection = ({
         if (full) return;
         const value = email.trim().toLowerCase();
         if (!EMAIL_RE.test(value)) return setError("Enter a valid email address.");
-        if (people.some((p) => p.email.toLowerCase() === value))
+        if (people.some((p) => p.email?.toLowerCase() === value))
             return setError("That person is already on your team or invited.");
         onInvite(value);
         setEmail("");
@@ -209,29 +219,35 @@ const SendInviteSection = ({
 };
 
 const InviteSection = ({
-    emails,
+    invites,
+    loading,
     onDecline,
     onJoin,
 }: {
-    emails: string[];
-    onDecline: (email: string) => void;
-    onJoin: (email: string) => void;
+    invites: IncomingInvite[];
+    loading: boolean;
+    onDecline: (teamId: string) => void;
+    onJoin: (teamId: string) => void;
 }) => (
     <SectionBox title="Incoming Invitations">
-        {emails.length === 0 ? (
+        {loading ? (
+            <EmptyNote>Loading invitations…</EmptyNote>
+        ) : invites.length === 0 ? (
             <EmptyNote>No pending invitations.</EmptyNote>
         ) : (
             <ul className="flex flex-col gap-2">
-                {emails.map((email) => (
-                    <li key={email} className={rowClass}>
-                        <span className="min-w-0 truncate">{email}</span>
+                {invites.map((invite) => (
+                    <li key={invite.teamId} className={rowClass}>
+                        <span className="min-w-0 truncate" title={`Team ${invite.teamId}`}>
+                            {inviteLabel(invite)}
+                        </span>
                         <span className="flex shrink-0 items-center gap-1">
                             <button
                                 type="button"
                                 className={removeBtnClass}
                                 title="Decline invite"
-                                aria-label={`Decline invite from ${email}`}
-                                onClick={() => onDecline(email)}
+                                aria-label={`Decline invite from ${inviteLabel(invite)}`}
+                                onClick={() => onDecline(invite.teamId)}
                             >
                                 <X className="h-5 w-5" strokeWidth={3} />
                             </button>
@@ -239,8 +255,8 @@ const InviteSection = ({
                                 type="button"
                                 className={joinBtnClass}
                                 title="Leave current team and join"
-                                aria-label={`Leave current team and join ${email}`}
-                                onClick={() => onJoin(email)}
+                                aria-label={`Leave current team and join ${inviteLabel(invite)}`}
+                                onClick={() => onJoin(invite.teamId)}
                             >
                                 <CircleArrowRight className="h-6 w-6" />
                             </button>
@@ -254,28 +270,27 @@ const InviteSection = ({
 
 const TeamPlanning = () => {
     const { user } = useAuth();
-    const [profile, setProfile] = useState<Profile | null>(null);
+
+    // Pulled from users/{uid} (team_id, invitations) and teams/{id} (owner, members, pending, autofill).
+    // Owner at top, followed by any pending, then members.
+    const [people, setPeople] = useState<Person[]>([]);
+    const [invites, setInvites] = useState<IncomingInvite[]>([]);
+    const [autofill, setAutofill] = useState(false);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (!user) return;
-        fetchProfile(user.uid).then(setProfile);
+        let active = true;
+        setLoading(true);
+        void fetchTeamPlanning(user.uid).then((data) => {
+            if (!active) return;
+            setPeople(data?.people ?? []);
+            setInvites(data?.invites ?? []);
+            setAutofill(data?.autofill ?? false);
+            setLoading(false);
+        });
+        return () => { active = false; };
     }, [user]);
-
-    // Sample data for now — swap for real team/invite data once the backend is wired up.
-    // Ensure owner at top, followed by any pending
-    const [people, setPeople] = useState<Person[]>([
-        { email: "alex@hackrx.dev", owner: true, pending: false },
-        { email: "leo@hackrx.dev", owner: false, pending: true },
-        { email: "maya@hackrx.dev", owner: false, pending: false },
-        { email: "sophia@hackrx.dev", owner: false, pending: false },
-    ]);
-    const [invites, setInvites] = useState<string[]>([
-        "jordan@hackrx.dev",
-        "priya@hackrx.dev",
-        "sam@hackrx.dev",
-    ]);
-
-    const [autofill, setAutofill] = useState(false);
 
     const invitePerson = (email: string) =>
         setPeople((prev) => {
@@ -283,17 +298,18 @@ const TeamPlanning = () => {
             // Keep owner first, then pending invites, then confirmed members.
             const lastPending = prev.reduce((idx, p, i) => (p.owner || p.pending ? i : idx), -1);
             const next = [...prev];
-            next.splice(lastPending + 1, 0, { email, owner: false, pending: true });
+            next.splice(lastPending + 1, 0, { id: email, email, owner: false, pending: true });
             return next;
         });
     // TODO: persist invites and the autofill preference once the backend is wired up.
-    const removePerson = (email: string) =>
-        setPeople((prev) => prev.filter((p) => p.email !== email));
-    const declineInvite = (email: string) =>
-        setInvites((prev) => prev.filter((e) => e !== email));
-    const joinTeam = (email: string) => {
+    // TODO: these only update the page for now; write them back to Firestore next.
+    const removePerson = (id: string) =>
+        setPeople((prev) => prev.filter((p) => p.id !== id));
+    const declineInvite = (teamId: string) =>
+        setInvites((prev) => prev.filter((i) => i.teamId !== teamId));
+    const joinTeam = (teamId: string) => {
         // TODO: leave current team and join the inviting team via the backend.
-        setInvites((prev) => prev.filter((e) => e !== email));
+        setInvites((prev) => prev.filter((i) => i.teamId !== teamId));
     };
 
     return (
@@ -307,13 +323,14 @@ const TeamPlanning = () => {
                     <div className="flex min-w-0 flex-col gap-6">
                         <TeamSection
                             people={people}
+                            loading={loading}
                             onRemove={removePerson}
                             autofill={autofill}
                             onAutofillChange={setAutofill}
                         />
-                        <SendInviteSection people={people} onInvite={invitePerson} />
+                        {!loading && <SendInviteSection people={people} onInvite={invitePerson} />}
                     </div>
-                    <InviteSection emails={invites} onDecline={declineInvite} onJoin={joinTeam} />
+                    <InviteSection invites={invites} loading={loading} onDecline={declineInvite} onJoin={joinTeam} />
                 </div>
             </section>
         </Layout>
