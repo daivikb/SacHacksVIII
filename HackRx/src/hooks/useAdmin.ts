@@ -18,14 +18,14 @@ export function useAdmin() {
       return;
     }
 
-    setLoading(true);
-    void isAdmin(user.uid).then((allowed) => {
-      if (!active) return;
-      setAdmin(allowed);
-      setLoading(false);
+    let active = true;
+    void isAdmin(uid).then((allowed) => {
+      if (active) setChecked({ uid, allowed });
     });
     return () => { active = false; };
-  }, [authLoading, user]);
+  }, [hardcoded, authLoading, uid]);
+
+  if (hardcoded) return { isAdmin: true, loading: false };
 
   return { isAdmin: admin, loading: authLoading || loading };
 }

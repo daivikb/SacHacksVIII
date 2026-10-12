@@ -3157,6 +3157,72 @@ html.low-end .page-decor .decor-star {
   border-color: var(--ink-black);
 }
 
+.portal-card select {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  font-size: 14px;
+  color: var(--cream);
+  background: rgba(0, 0, 0, .35);
+  border: 1px solid var(--ink-black);
+  border-radius: 6px;
+}
+
+.portal-card textarea {
+  color: var(--cream);
+  background: rgba(0, 0, 0, .35);
+  border-color: var(--ink-black);
+}
+
+.portal-card input[type="file"] {
+  width: 100%;
+  font-size: 13px;
+}
+
+.portal-card .portal-note {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.portal-card .portal-note a {
+  color: var(--cream);
+  text-decoration: underline;
+}
+
+.portal-card ul.portal-note {
+  margin: 0;
+  padding-left: 18px;
+  font-family: var(--sans);
+  color: var(--ink-dim);
+}
+
+.portal-card .portal-error {
+  color: hsl(var(--destructive));
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.portal-card select option {
+  color: #111;
+}
+
+.portal-checks {
+  display: grid;
+  gap: 6px;
+}
+
+.portal-card .portal-checks label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--cream);
+  cursor: pointer;
+}
+
 /* every card's CTA sits on the same line, full width */
 .portal-card .venom-submit {
   align-self: stretch;
@@ -3167,6 +3233,471 @@ html.low-end .page-decor .decor-star {
 
 .portal-forms .portal-card>label:first-of-type {
   margin-top: 2px;
+}
+
+/* application form: one centred column of question cards, a section at a time */
+.hackrx-page .panel.portal.apply {
+  justify-content: flex-start;
+  padding: calc(72px + var(--space-md)) var(--gutter) var(--space-xl);
+}
+
+.hackrx-page .panel.apply .chapter-title {
+  margin-top: var(--space-sm);
+  font-size: clamp(2.4rem, 1.4rem + 4.4vw, 5rem);
+}
+
+.gform {
+  --gform-accent: var(--surface-yellow);
+  --gform-error: #ff8080;
+  display: grid;
+  gap: 14px;
+  width: min(720px, 100%);
+  margin-top: var(--space-md);
+  text-align: left;
+  scroll-margin-top: 84px;
+}
+
+.gform-head,
+.gform-q {
+  padding: 22px 24px;
+  background: rgba(20, 8, 32, .78);
+  border: 2px solid var(--ink-black);
+  border-radius: 8px;
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, .45);
+}
+
+.gform-head {
+  display: grid;
+  gap: 14px;
+  border-top: 10px solid var(--gform-accent);
+}
+
+.gform-head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
+}
+
+.gform-head h2 {
+  margin: 0;
+  font-family: var(--comic-display, var(--sans));
+  font-weight: 400;
+  font-size: clamp(1.4rem, 1.1rem + 1.2vw, 2rem);
+  letter-spacing: .03em;
+  color: var(--cream);
+}
+
+.gform-progress {
+  height: 6px;
+  overflow: hidden;
+  background: rgba(237, 234, 222, .14);
+  border-radius: 999px;
+}
+
+.gform-progress span {
+  display: block;
+  height: 100%;
+  background: var(--gform-accent);
+  border-radius: inherit;
+  transition: width .45s var(--liquid);
+}
+
+.gform-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gform-steps button {
+  width: 30px;
+  height: 30px;
+  font-family: var(--mono, var(--sans));
+  font-size: 12px;
+  color: var(--ink-dim);
+  background: transparent;
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background .2s ease, color .2s ease, border-color .2s ease, transform .2s ease;
+}
+
+.gform-steps button.is-done {
+  color: var(--cream);
+  border-color: var(--gform-accent);
+}
+
+.gform-steps button.is-current {
+  color: var(--ink-black);
+  background: var(--gform-accent);
+  border-color: var(--gform-accent);
+}
+
+.gform-steps button:hover:not(:disabled):not(.is-current) {
+  background: rgba(242, 214, 117, .16);
+  transform: translateY(-1px);
+}
+
+.gform-steps button:disabled {
+  cursor: default;
+}
+
+.gform-section {
+  display: grid;
+  gap: 14px;
+  animation: gform-in .35s var(--liquid) both;
+}
+
+@keyframes gform-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+/* the question being answered picks up the accent edge, like the active card in a form */
+.gform-q {
+  border-left: 6px solid transparent;
+  transition: border-color .2s ease, background-color .2s ease;
+}
+
+.gform-q:focus-within {
+  border-left-color: var(--gform-accent);
+  background: rgba(20, 8, 32, .9);
+}
+
+.gform-q:has([aria-invalid="true"]) {
+  border-color: var(--gform-error);
+}
+
+.gform-followup {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--line);
+  animation: gform-in .25s var(--liquid) both;
+}
+
+.gform .gform-title {
+  display: block;
+  margin: 0 0 6px;
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--cream);
+}
+
+.gform .gform-required,
+.gform .gform-error,
+.gform .text-destructive {
+  color: var(--gform-error);
+}
+
+.gform .gform-title.text-destructive {
+  color: var(--cream);
+}
+
+.gform .gform-error {
+  margin: 8px 0 0;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.gform .gform-hint,
+.gform .gform-count {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-dim);
+}
+
+.gform .gform-count {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.gform .gform-hint a {
+  color: var(--gform-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.gform-foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.gform-foot:empty {
+  display: none;
+}
+
+/* answers are written on a line, not in a box */
+.gform .gform-input,
+.gform .gform-select {
+  width: 100%;
+  padding: 8px 2px;
+  font-family: var(--sans);
+  font-size: 15px;
+  color: var(--cream);
+  background: transparent;
+  border: 0;
+  border-bottom: 1.5px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+
+.gform input.gform-input {
+  max-width: 420px;
+}
+
+.gform .gform-select {
+  max-width: 420px;
+  height: 42px;
+  padding-inline: 10px;
+  border: 1.5px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.gform .gform-select option {
+  color: #111;
+}
+
+.gform .gform-input::placeholder {
+  color: rgba(237, 234, 222, .38);
+}
+
+.gform .gform-input:focus-visible,
+.gform .gform-select:focus-visible {
+  border-color: var(--gform-accent);
+  box-shadow: 0 1.5px 0 var(--gform-accent);
+}
+
+.gform .gform-input[aria-invalid="true"],
+.gform .gform-select[aria-invalid="true"] {
+  border-color: var(--gform-error);
+}
+
+.gform-options {
+  display: grid;
+  gap: 2px;
+}
+
+.gform-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gform .gform-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-inline: -10px;
+  padding: 9px 10px;
+  font-family: var(--sans);
+  font-size: 14.5px;
+  line-height: 1.35;
+  color: var(--cream);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .15s ease;
+}
+
+.gform .gform-option:hover {
+  background: rgba(237, 234, 222, .07);
+}
+
+.gform .gform-option.is-selected {
+  background: rgba(242, 214, 117, .13);
+}
+
+.gform .gform-option.is-disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.gform .gform-option input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--gform-accent);
+  cursor: inherit;
+}
+
+.gform .gform-option:has(input:focus-visible) {
+  outline: 2px solid var(--gform-accent);
+  outline-offset: 1px;
+}
+
+.gform .gform-chips .gform-option {
+  margin: 0;
+  padding: 8px 16px;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+}
+
+.gform .gform-chips .gform-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gform .gform-chips .gform-option:hover {
+  transform: translateY(-1px);
+}
+
+.gform .gform-chips .gform-option.is-selected {
+  font-weight: 600;
+  color: var(--ink-black);
+  background: var(--gform-accent);
+  border-color: var(--gform-accent);
+}
+
+.gform .gform-clear,
+.gform .gform-back {
+  padding: 0;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--gform-accent);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.gform .gform-clear {
+  margin-left: auto;
+}
+
+.gform .gform-clear:hover,
+.gform .gform-back:hover:not(:disabled) {
+  color: var(--cream);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.gform-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gform .gform-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: 12px;
+  padding: 22px 16px;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--ink-dim);
+  text-align: center;
+  border: 1.5px dashed var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color .2s ease, background-color .2s ease;
+}
+
+.gform .gform-drop strong {
+  font-size: 14.5px;
+  color: var(--gform-accent);
+}
+
+.gform .gform-drop:hover,
+.gform .gform-drop.is-dragging,
+.gform-file-input:focus-visible+.gform-drop {
+  background: rgba(242, 214, 117, .08);
+  border-color: var(--gform-accent);
+}
+
+.gform-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+}
+
+.gform-file-name {
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--cream);
+  overflow-wrap: anywhere;
+}
+
+.gform-file .gform-count,
+.gform-file .gform-clear {
+  margin-left: 0;
+}
+
+.gform .gform-list {
+  margin: 0;
+  padding-left: 20px;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  line-height: 1.55;
+  list-style: disc;
+  color: var(--ink-dim);
+}
+
+.gform-nav {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 20px;
+  margin-top: 8px;
+}
+
+.gform .gform-back {
+  margin-right: auto;
+  padding: 10px 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.gform-nav .venom-submit {
+  width: auto;
+  min-width: 150px;
+  height: auto;
+  padding-inline: 32px;
+}
+
+@media (max-width: 560px) {
+
+  .gform-head,
+  .gform-q {
+    padding: 18px 16px;
+  }
+
+  .gform-nav .venom-submit {
+    flex: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .gform-section,
+  .gform-followup {
+    animation: none;
+  }
 }
 
 /* countdown: giant numerals with overlaid labels */

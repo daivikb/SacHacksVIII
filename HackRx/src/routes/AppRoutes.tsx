@@ -6,6 +6,7 @@ import Dashboard from "@/pages/Dashboard";
 import Account from "@/pages/Account";
 import AdminDashboard from "@/pages/AdminDashboard";
 import AdminAccount from "@/pages/AdminAccount";
+import SignupPage from "@/pages/SignupPage";
 import TeamPlanning from "@/pages/TeamPlanning";
 import ApplicationForm from "@/pages/ApplicationForm";
 import { useAuth } from "@/context/auth-context";
@@ -36,6 +37,17 @@ export const AppRoutes = () => (
   <Routes>
 
     <Route path="/" element={<Home />} />
+
+    <Route
+      path="/apply"
+      element={
+        <Protected>
+          <SignupPage />
+        </Protected>
+      }
+    />
+    <Route path="/application-form" element={<Navigate to="/apply" replace />} />
+    <Route path="/signup" element={<Navigate to="/apply" replace />} />
 
     <Route
       path="/dashboard"
