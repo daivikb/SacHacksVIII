@@ -250,14 +250,15 @@ function randomTeamCode(): string {
   return code;
 }
 
-/** A team code that no user document holds yet. */
+/** A team code that no user document holds and no team is filed under yet. */
 async function uniqueTeamCode(): Promise<string> {
   for (;;) {
     const code = randomTeamCode();
-    const taken = await getDocs(
-      query(collection(db, "users"), where("team_id", "==", code), limit(1)),
-    );
-    if (taken.empty) return code;
+    const [holders, team] = await Promise.all([
+      getDocs(query(collection(db, "users"), where("team_id", "==", code), limit(1))),
+      getDoc(doc(db, "teams", code)),
+    ]);
+    if (holders.empty && !team.exists()) return code;
   }
 }
 
@@ -265,7 +266,7 @@ async function uniqueTeamCode(): Promise<string> {
  * Reviews an application.
  *
  * Approving also gives the applicant a unique team code in `team_id`, unless
- * they already have one. Rejecting takes their team code away again.
+ * they already have one, and files a team they own under that code. Rejecting takes their team code away again.
  */
 export async function reviewApplication(
   id: string,
@@ -290,8 +291,18 @@ export async function reviewApplication(
     await runTransaction(db, async (tx) => {
       const snapshot = await tx.get(ref);
       // Re-approving must not replace a code the applicant may already have shared.
-      const hasCode = !!snapshot.data()?.team_id;
-      tx.update(ref, hasCode ? review : { ...review, team_id: code });
+      if (snapshot.data()?.team_id) {
+        tx.update(ref, review);
+        return;
+      }
+      tx.update(ref, { ...review, team_id: code });
+      tx.set(doc(db, "teams", code), {
+        team_id: code,
+        owner: id,
+        members: null,
+        pending: null,
+        autofill: false,
+      });
     });
 
     return null;

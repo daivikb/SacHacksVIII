@@ -16,8 +16,15 @@ rules_version = '2';
 //   certifications  list of certificates issued to the user ({ title,
 //              certificate_code, issued_by, issued_at }). Admin-only.
 //
-// teams/{teamId}
-//   members    list of member uids, at most 4
+// teams/{teamId}           teamId is the owner's team code (their team_id)
+//   team_id    the same code as the document id
+//   owner      uid of the user the code was assigned to
+//   members    list of member uids, at most 4; null until someone joins
+//   pending    list of uids asking to join; null until someone asks
+//   autofill   whether the team wants to be topped up; false by default
+//
+// A team is created by an admin, in the same write that approves its owner's
+// application and gives them the team code.
 //
 // Team membership is stored on both sides (users.team_id and teams.members)
 // and must always agree, so joining, leaving or switching teams has to update
@@ -166,9 +173,10 @@ service cloud.firestore {
       allow read: if signedIn();
 
       // Start a team: you are its only member and your user doc points at it.
-      allow create: if signedIn()
-        && request.resource.data.members == [request.auth.uid]
-        && teamIdAfterWrite(request.auth.uid) == teamId;
+      allow create: if isAdmin()
+        || (signedIn()
+            && request.resource.data.members == [request.auth.uid]
+            && teamIdAfterWrite(request.auth.uid) == teamId);
 
       allow update: if isAdmin() || joining() || leaving();
 
