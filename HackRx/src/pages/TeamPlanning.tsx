@@ -1,9 +1,16 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { CircleArrowRight, Crown, Hourglass, Send, X } from "lucide-react";
+import { CircleArrowRight, Crown, Hourglass, Send, TriangleAlert, X } from "lucide-react";
 import { Layout, Amoeba } from "@/components/layout/Layout";
 import { PortalDecor } from "@/components/layout/PortalDecor";
 import { useAuth } from "@/context/auth-context";
-import { fetchTeamPlanning, type IncomingInvite, type TeamPerson } from "@/services/team.service";
+import {
+    MAX_TEAM_SIZE,
+    fetchTeamPlanning,
+    sendInvite,
+    type IncomingInvite,
+    type InviteResult,
+    type TeamPerson,
+} from "@/services/team.service";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type Person = TeamPerson;
@@ -11,9 +18,6 @@ type Person = TeamPerson;
 /** Email when readable, otherwise a short form of the uid. */
 const displayName = (p: Person) => p.email ?? `User ${p.id.slice(0, 8)}…`;
 const inviteLabel = (i: IncomingInvite) => i.ownerEmail ?? `Team ${i.teamId}`;
-
-// Owner + members + pending invites can't go past this.
-const MAX_TEAM_SIZE = 3;
 
 // Shared row + icon-button styles so both lists line up the same way.
 const rowClass =
@@ -148,27 +152,39 @@ const TeamSection = ({
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+type Notice = { tone: "error" | "warning" | "success"; text: string };
+
 const SendInviteSection = ({
     people,
     onInvite,
 }: {
     people: Person[];
-    onInvite: (email: string) => void;
+    onInvite: (email: string) => Promise<InviteResult>;
 }) => {
     const [email, setEmail] = useState("");
-    const [error, setError] = useState<string | null>(null);
+    const [notice, setNotice] = useState<Notice | null>(null);
+    const [sending, setSending] = useState(false);
     const full = people.length >= MAX_TEAM_SIZE;
+    const error = notice && notice.tone !== "success" ? notice : null;
 
-    const submit = (e: FormEvent) => {
+    const submit = async (e: FormEvent) => {
         e.preventDefault();
-        if (full) return;
+        if (full || sending) return;
         const value = email.trim().toLowerCase();
-        if (!EMAIL_RE.test(value)) return setError("Enter a valid email address.");
+        if (!EMAIL_RE.test(value)) return setNotice({ tone: "error", text: "Enter a valid email address." });
         if (people.some((p) => p.email?.toLowerCase() === value))
-            return setError("That person is already on your team or invited.");
-        onInvite(value);
-        setEmail("");
-        setError(null);
+            return setNotice({ tone: "error", text: "That person is already on your team or invited." });
+
+        setSending(true);
+        setNotice(null);
+        const result = await onInvite(value);
+        setSending(false);
+        if (result.status === "sent") {
+            setEmail("");
+            setNotice({ tone: "success", text: `Invite sent to ${value}.` });
+        } else {
+            setNotice({ tone: result.status, text: result.message });
+        }
     };
 
     return (
@@ -186,21 +202,22 @@ const SendInviteSection = ({
                     value={email}
                     onChange={(e) => {
                         setEmail(e.target.value);
-                        if (error) setError(null);
+                        if (notice) setNotice(null);
                     }}
-                    disabled={full}
+                    disabled={full || sending}
                     aria-invalid={!!error}
                     aria-describedby={error ? "invite-email-error" : full ? "invite-full-note" : undefined}
                     className="h-10 min-w-0 flex-1 rounded-[3px] border px-3 text-sm placeholder:text-white/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 disabled:cursor-not-allowed disabled:opacity-50"
                 />
                 <button
                     type="submit"
-                    disabled={full}
+                    disabled={full || sending}
+                    aria-busy={sending}
                     className={`${joinBtnClass} disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent`}
-                    title={full ? "Team is full" : "Send invite"}
+                    title={full ? "Team is full" : sending ? "Sending…" : "Send invite"}
                     aria-label="Send invite"
                 >
-                    <Send className="h-5 w-5" />
+                    <Send className={`h-5 w-5 ${sending ? "animate-pulse" : ""}`} />
                 </button>
             </form>
             {full && (
@@ -209,9 +226,24 @@ const SendInviteSection = ({
                     or cancel an invite to add another person.
                 </p>
             )}
-            {error && (
+            {error?.tone === "warning" && (
+                <p
+                    id="invite-email-error"
+                    role="alert"
+                    className="flex items-start gap-2 rounded-[3px] border border-[var(--sv-yellow)]/40 bg-[var(--sv-yellow)]/10 px-3 py-2 !text-[var(--sv-yellow)]"
+                >
+                    <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>{error.text}</span>
+                </p>
+            )}
+            {error?.tone === "error" && (
                 <p id="invite-email-error" role="alert" className="!text-red-400">
-                    {error}
+                    {error.text}
+                </p>
+            )}
+            {notice?.tone === "success" && (
+                <p role="status" className="!text-green-400">
+                    {notice.text}
                 </p>
             )}
         </SectionBox>
@@ -275,6 +307,7 @@ const TeamPlanning = () => {
     // Owner at top, followed by any pending, then members.
     const [people, setPeople] = useState<Person[]>([]);
     const [invites, setInvites] = useState<IncomingInvite[]>([]);
+    const [teamId, setTeamId] = useState<string | null>(null);
     const [autofill, setAutofill] = useState(false);
     const [loading, setLoading] = useState(true);
 
@@ -284,6 +317,7 @@ const TeamPlanning = () => {
         setLoading(true);
         void fetchTeamPlanning(user.uid).then((data) => {
             if (!active) return;
+            setTeamId(data?.teamId ?? null);
             setPeople(data?.people ?? []);
             setInvites(data?.invites ?? []);
             setAutofill(data?.autofill ?? false);
@@ -292,16 +326,23 @@ const TeamPlanning = () => {
         return () => { active = false; };
     }, [user]);
 
-    const invitePerson = (email: string) =>
-        setPeople((prev) => {
-            if (prev.length >= MAX_TEAM_SIZE) return prev; // owner + members + pending already at the cap
-            // Keep owner first, then pending invites, then confirmed members.
-            const lastPending = prev.reduce((idx, p, i) => (p.owner || p.pending ? i : idx), -1);
-            const next = [...prev];
-            next.splice(lastPending + 1, 0, { id: email, email, owner: false, pending: true });
-            return next;
-        });
-    // TODO: persist invites and the autofill preference once the backend is wired up.
+    // Checks the accepted user list, then writes teams.pending + the invitee's invitations.
+    const invitePerson = async (email: string): Promise<InviteResult> => {
+        if (!user || !teamId)
+            return { status: "error", message: "You need to be accepted onto a team before inviting people." };
+        const result = await sendInvite(user.uid, teamId, email);
+        if (result.status === "sent") {
+            setPeople((prev) => {
+                // Keep owner first, then pending invites, then confirmed members.
+                const lastPending = prev.reduce((idx, p, i) => (p.owner || p.pending ? i : idx), -1);
+                const next = [...prev];
+                next.splice(lastPending + 1, 0, result.person);
+                return next;
+            });
+        }
+        return result;
+    };
+    // TODO: persist the autofill preference once the backend is wired up.
     // TODO: these only update the page for now; write them back to Firestore next.
     const removePerson = (id: string) =>
         setPeople((prev) => prev.filter((p) => p.id !== id));

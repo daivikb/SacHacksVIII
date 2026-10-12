@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/auth-context";
 import { fetchProfile } from "@/services/auth.service";
+import { registerAcceptedUser } from "@/services/team.service";
 
 /**
  * Whether the signed-in participant has been accepted.
@@ -38,9 +39,11 @@ export function useAcceptance() {
       const next = profile?.team_id ?? null;
       lastKnown.set(uid, next);
       setTeamId(next);
+      // Accepted: make sure they're on the accepted user list so they can be invited.
+      if (next) void registerAcceptedUser(uid, user?.email ?? profile?.email);
     });
     return () => { active = false; };
-  }, [authLoading, uid]);
+  }, [authLoading, uid, user?.email]);
 
   return {
     accepted: Boolean(teamId),

@@ -15,9 +15,13 @@
  *   members      list of member uids
  *   pending      list of uids invited to the party but not joined yet
  *   autofill     whether open spots get filled with random hackers
+ *
+ * accepted_users/{lowercased email}
+ *   user_id, email   the "accepted user list": how an invite email is turned
+ *                    into a uid. Only exact-email lookups are allowed.
  */
 
-import { doc, getDoc } from "firebase/firestore";
+import { arrayUnion, doc, getDoc, setDoc, writeBatch } from "firebase/firestore";
 
 import { db } from "@/integrations/firebase/client";
 
@@ -120,4 +124,96 @@ export async function fetchTeamPlanning(uid: string): Promise<TeamPlanningData |
             ownerEmail: inviteOwners[i] ? emails.get(inviteOwners[i]!) ?? null : null,
         })),
     };
+}
+
+/* ------------------------------------------------------------------ */
+/* Accepted user list                                                  */
+/* ------------------------------------------------------------------ */
+
+/** Max owner + members + pending on one team. */
+export const MAX_TEAM_SIZE = 3;
+
+/** Document id in accepted_users for an email. */
+export const acceptedUserKey = (email: string) => email.trim().toLowerCase();
+
+const registered = new Set<string>();
+
+/**
+ * Adds an accepted user to accepted_users so teammates can invite them by
+ * email. Admin approval does this too; calling it on visit covers anyone
+ * approved before that existed. Runs at most once per user per page load.
+ */
+export async function registerAcceptedUser(uid: string, email: string | null | undefined) {
+    if (!email || registered.has(uid)) return;
+    registered.add(uid);
+    try {
+        const key = acceptedUserKey(email);
+        await setDoc(doc(db, "accepted_users", key), { user_id: uid, email: key });
+    } catch {
+        registered.delete(uid); // try again next time
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Sending invites                                                     */
+/* ------------------------------------------------------------------ */
+
+export type InviteResult =
+    | { status: "sent"; person: TeamPerson }
+    /** The email isn't on the accepted user list. */
+    | { status: "warning"; message: string }
+    | { status: "error"; message: string };
+
+/**
+ * Invites `email` to the caller's team:
+ *   · checks the email is on the accepted user list
+ *   · adds their uid to teams/{teamId}.pending
+ *   · adds teamId to users/{theirUid}.invitations
+ * The last two happen in one batch, so they always agree.
+ */
+export async function sendInvite(uid: string, teamId: string, email: string): Promise<InviteResult> {
+    const key = acceptedUserKey(email);
+    try {
+        const entry = await getDoc(doc(db, "accepted_users", key));
+        const inviteeId = entry.exists() ? str(entry.data().user_id) : null;
+        if (!inviteeId) {
+            return {
+                status: "warning",
+                message: `${key} isn't on the accepted hacker list. Only accepted participants can be invited. Check the spelling, or ask them to log in once after being accepted.`,
+            };
+        }
+        if (inviteeId === uid) return { status: "error", message: "You can't invite yourself." };
+
+        // First invite from a team that has no teams doc yet: start it, with the caller as owner.
+        const teamRef = doc(db, "teams", teamId);
+        let team = await getDoc(teamRef);
+        if (!team.exists()) {
+            await setDoc(teamRef, { team_id: teamId, owner: uid, members: [uid], pending: [], autofill: false });
+            team = await getDoc(teamRef);
+        }
+        const members = strList(team.data()?.members);
+        const pending = strList(team.data()?.pending);
+
+        if (!members.includes(uid)) return { status: "error", message: "You're not on this team anymore. Refresh the page." };
+        if (members.includes(inviteeId)) return { status: "error", message: `${key} is already on your team.` };
+        if (pending.includes(inviteeId)) return { status: "error", message: `${key} has already been invited.` };
+        if (members.length + pending.length >= MAX_TEAM_SIZE)
+            return { status: "error", message: `Your team is full (${MAX_TEAM_SIZE} including pending invites).` };
+
+        const batch = writeBatch(db);
+        batch.update(teamRef, { pending: arrayUnion(inviteeId) });
+        batch.update(doc(db, "users", inviteeId), { invitations: arrayUnion(teamId) });
+        await batch.commit();
+
+        return { status: "sent", person: { id: inviteeId, email: key, owner: false, pending: true } };
+    } catch (error) {
+        const code = (error as { code?: string } | null)?.code;
+        return {
+            status: "error",
+            message:
+                code === "permission-denied"
+                    ? "That invite was refused. Make sure they're accepted and your team has room, then try again."
+                    : "Couldn't send the invite. Check your connection and try again.",
+        };
+    }
 }

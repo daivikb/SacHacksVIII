@@ -18,9 +18,22 @@ rules_version = '2';
 //              after submitting; admins can only change the review fields.
 //   certifications  list of certificates issued to the user ({ title,
 //              certificate_code, issued_by, issued_at }). Admin-only.
+//   invitations  list of team ids that have invited this user. A member of
+//              a team may add that team's id here while adding the user to
+//              the team's `pending` in the same batch.
 //
 // teams/{teamId}
+//   team_id    same as the document id
+//   owner      uid of the party owner
 //   members    list of member uids, at most 4
+//   pending    list of invited uids. Members + pending can't exceed 3.
+//   autofill   whether open spots get filled with random hackers
+//
+// accepted_users/{lowercased email}
+//   user_id, email   lets a hacker look up an accepted participant's uid by
+//              their exact email (single-document get only, never listed).
+//              Written by admins on approval, or by an accepted user for
+//              their own email.
 //
 // Team membership is stored on both sides (users.team_id and teams.members)
 // and must always agree, so joining, leaving or switching teams has to update
@@ -80,6 +93,26 @@ service cloud.firestore {
       );
     }
 
+    // A list field, or [] when it's missing or null.
+    function listOr(value) {
+      return value is list ? value : [];
+    }
+
+    // Someone on the caller's team is adding that team's id to this user's
+    // `invitations`, and the team's `pending` lists this user after the write.
+    function beingInvited(uid) {
+      let teamId = get(userPath(request.auth.uid)).data.get('team_id', null);
+      let before = listOr(resource.data.get('invitations', null));
+      let after = listOr(request.resource.data.get('invitations', null));
+      return signedIn()
+        && !isSelf(uid)
+        && teamId is string
+        && changedKeys().hasOnly(['invitations'])
+        && teamId in after
+        && after.removeAll([teamId]).toSet() == before.removeAll([teamId]).toSet()
+        && uid in listOr(getAfter(teamPath(teamId)).data.get('pending', null));
+    }
+
     function hasApplication(data) {
       return data.get('application', null) != null;
     }
@@ -134,7 +167,8 @@ service cloud.firestore {
               && emailIsOwn()
               && applicationSubmitIsValid()
               && teamChangeIsConsistent(uid))
-            || (isAdmin() && applicationReviewIsValid()));
+            || (isAdmin() && applicationReviewIsValid())
+            || beingInvited(uid));
 
       allow delete: if false;
     }
@@ -168,21 +202,59 @@ service cloud.firestore {
           && teamIdAfterWrite(request.auth.uid) != teamId;
       }
 
+      // A member adds exactly one accepted user (not already on the team) to
+      // `pending`, keeping members + pending at 3 or fewer, and that user's
+      // `invitations` lists this team after the write.
+      function inviting() {
+        let before = listOr(resource.data.get('pending', null));
+        let after = listOr(request.resource.data.get('pending', null));
+        let added = after.removeAll(before);
+        return signedIn()
+          && request.auth.uid in resource.data.members
+          && changedKeys().hasOnly(['pending'])
+          && added.size() == 1
+          && after.size() == before.size() + 1
+          && !(added[0] in resource.data.members)
+          && resource.data.members.size() + after.size() <= 3
+          && getAfter(userPath(added[0])).data.get('team_id', null) != null
+          && teamId in listOr(getAfter(userPath(added[0])).data.get('invitations', null));
+      }
+
       // Signed-in users can see teams (to view teammates and pick one to join).
       allow read: if signedIn();
 
-      // Start a team: you are its only member and your user doc points at it.
+      // Start a team: you are its owner and only member, nobody is pending
+      // yet, and your user doc points at it.
       allow create: if signedIn()
         && request.resource.data.members == [request.auth.uid]
+        && request.resource.data.get('owner', request.auth.uid) == request.auth.uid
+        && listOr(request.resource.data.get('pending', null)).size() == 0
         && teamIdAfterWrite(request.auth.uid) == teamId;
 
-      allow update: if isAdmin() || joining() || leaving();
+      allow update: if isAdmin() || joining() || leaving() || inviting();
 
       // The last member may delete the team as they leave it.
       allow delete: if isAdmin()
         || (signedIn()
             && resource.data.members == [request.auth.uid]
             && teamIdAfterWrite(request.auth.uid) != teamId);
+    }
+
+    // ---- accepted participant directory --------------------------------------
+    match /accepted_users/{email} {
+      // Look up one exact email; listing the whole directory is not allowed.
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create, update: if isAdmin()
+        || (signedIn()
+            && tokenEmail() is string
+            && email == tokenEmail().lower()
+            && request.resource.data.keys().hasOnly(['user_id', 'email'])
+            && request.resource.data.user_id == request.auth.uid
+            && get(userPath(request.auth.uid)).data.get('team_id', null) != null);
+
+      allow delete: if isAdmin();
     }
 
     // ---- admin-only ---------------------------------------------------------
