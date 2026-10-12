@@ -231,8 +231,13 @@ export async function fetchProfile(
         typeof data.full_name === "string" ? data.full_name : null,
       username:
         typeof data.username === "string" ? data.username : null,
+      // Any non-empty value counts (a team id typed into the console may be a number).
       team_id:
-        typeof data.team_id === "string" && data.team_id ? data.team_id : null,
+        typeof data.team_id === "string" && data.team_id.trim()
+          ? data.team_id.trim()
+          : typeof data.team_id === "number"
+            ? String(data.team_id)
+            : null,
     };
   } catch {
     return null;
