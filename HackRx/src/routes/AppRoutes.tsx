@@ -5,6 +5,7 @@ import NotFound from "@/pages/NotFound";
 import Dashboard from "@/pages/Dashboard";
 import Account from "@/pages/Account";
 import AdminDashboard from "@/pages/AdminDashboard";
+import AdminAccount from "@/pages/AdminAccount";
 import { useAuth } from "@/context/auth-context";
 import { useAdmin } from "@/hooks/useAdmin";
 
@@ -54,6 +55,14 @@ export const AppRoutes = () => (
       element={
         <AdminOnly>
           <AdminDashboard />
+        </AdminOnly>
+      }
+    />
+    <Route
+      path="/admin/account"
+      element={
+        <AdminOnly>
+          <AdminAccount />
         </AdminOnly>
       }
     />

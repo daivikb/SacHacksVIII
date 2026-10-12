@@ -433,11 +433,11 @@ const AdminDashboard = () => {
     setLoading(true);
     const result = await fetchAdminWorkspace();
     setLoading(false);
+    // Show whatever did load, even if some collections were refused.
+    setWorkspace(result.data);
     if (result.error) {
-      toast({ title: "Couldn't load control room", description: result.error, variant: "destructive" });
-      return;
+      toast({ title: "Couldn't load everything", description: result.error, variant: "destructive" });
     }
-    if (result.data) setWorkspace(result.data);
   }, [toast]);
 
   useEffect(() => { void load(); }, [load]);
