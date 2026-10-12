@@ -4352,6 +4352,7 @@ html.low-end .page-decor .decor-star {
     overflow-x: auto;
   }
 }
+
 /* ==========================================================================
    APPLICATION FORM (/apply)
    ========================================================================== */
@@ -4756,4 +4757,25 @@ html.low-end .page-decor .decor-star {
   .gform-progress>span {
     transition: none;
   }
+}
+
+
+/* Add-on. 
+
+/* Sponsor pyramid: ~60% translucent bands (chips stay solid) */
+.tier-jubilee {
+  --band-bg: linear-gradient(180deg, rgba(212, 160, 23, .6), rgba(154, 111, 0, .6));
+}
+
+.tier-platinum {
+  --band-bg: linear-gradient(180deg, rgba(221, 225, 232, .6), rgba(169, 176, 187, .6));
+}
+
+.tier-gold {
+  --band-bg: linear-gradient(180deg, rgba(255, 224, 51, .6), rgba(255, 183, 0, .6));
+}
+
+/* the drop-shadow would show through the translucent bands and muddy the colours */
+.sponsor-tier {
+  filter: none;
 }
