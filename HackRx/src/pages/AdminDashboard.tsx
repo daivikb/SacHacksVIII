@@ -421,10 +421,9 @@ const AdminDashboard = () => {
   const [statusFilter, setStatusFilter] = useState("All hackers");
   const [schoolFilter, setSchoolFilter] = useState("All schools");
 
-  // SECURITY NOTE — when there is no Firebase user (the hardcoded admin login in
-  // admin.service.ts), every review and certificate is recorded as issued by the
-  // literal string "admin", so the audit trail can't say which person acted.
-  const actor = user?.uid ?? "admin";
+  // The signed-in admin's uid, recorded as reviewed_by / issued_by. <AdminOnly>
+  // guarantees a Firebase user here; the fallback is only for the type checker.
+  const actor = user?.uid ?? "unknown";
   const adminName = text(user?.displayName, text(user?.email, "Admin"));
 
   /* ---------------- Load ---------------- */
