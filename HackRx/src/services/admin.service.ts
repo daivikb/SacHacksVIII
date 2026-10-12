@@ -7,13 +7,14 @@
  */
 
 import {
+  Timestamp,
+  arrayUnion,
   collection,
   doc,
   getDoc,
   getDocs,
   serverTimestamp,
   updateDoc,
-  addDoc,
 } from "firebase/firestore";
 
 import {
@@ -142,11 +143,10 @@ async function readCollection<T extends { id: string }>(
  *
  * Firestore collections replace the old Supabase tables:
  *
- * users (applications are the `application` field on each user)
+ * users (applications are the `application` field on each user, and
+ *        certificates the `certifications` list on each user)
  * teams
  * demos
- * users
- * certifications
  *
  * Each collection is read independently, so one that is empty, missing or
  * denied by Security Rules does not hide the others. `error` describes
@@ -160,7 +160,6 @@ export async function fetchAdminWorkspace(): Promise<{
     ["teams", "formed_at"],
     ["demos", "created_at"],
     ["users", "created_at"],
-    ["certifications", "issued_at"],
   ] as const;
 
   const results = await Promise.allSettled(
@@ -207,13 +206,27 @@ export async function fetchAdminWorkspace(): Promise<{
     }))
     .sort((x, y) => toMillis(y.created_at) - toMillis(x.created_at));
 
+  // Certificates are a list on the holder's user document. Each one is
+  // flattened into its own row carrying the holder's uid.
+  const certifications = members
+    .flatMap((m) =>
+      (Array.isArray(m.certifications) ? m.certifications : [])
+        .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+        .map((c): Certification => ({
+          ...c,
+          id: `${m.id}:${String(c.certificate_code ?? c.title)}`,
+          user_id: m.id,
+        })),
+    )
+    .sort((x, y) => toMillis(y.issued_at) - toMillis(x.issued_at));
+
   return {
     data: {
       applications,
       teams: rows[0] as Team[],
       demos: rows[1] as Demo[],
       members,
-      certifications: rows[3] as Certification[],
+      certifications,
     },
     error,
   };
@@ -244,7 +257,8 @@ export async function reviewApplication(
 }
 
 /**
- * Issues a certification to a user.
+ * Issues a certification to a user, by adding it to the `certifications`
+ * list on their user document.
  */
 export async function issueCertification(
   userId: string,
@@ -257,12 +271,14 @@ export async function issueCertification(
       .slice(0, 8)
       .toUpperCase()}`;
 
-    await addDoc(collection(db, "certifications"), {
-      user_id: userId,
-      issued_by: issuedBy,
-      title,
-      certificate_code: certificateCode,
-      issued_at: serverTimestamp(),
+    // serverTimestamp() isn't allowed inside arrayUnion, hence the client clock.
+    await updateDoc(doc(db, "users", userId), {
+      certifications: arrayUnion({
+        issued_by: issuedBy,
+        title,
+        certificate_code: certificateCode,
+        issued_at: Timestamp.now(),
+      }),
     });
 
     return null;

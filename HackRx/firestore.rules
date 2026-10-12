@@ -13,6 +13,8 @@ rules_version = '2';
 //              "approved" | "rejected"), created_at, and reviewed_by /
 //              reviewed_at once an admin decides. Applicants can't edit it
 //              after submitting; admins can only change the review fields.
+//   certifications  list of certificates issued to the user ({ title,
+//              certificate_code, issued_by, issued_at }). Admin-only.
 //
 // teams/{teamId}
 //   members    list of member uids, at most 4
@@ -112,14 +114,17 @@ service cloud.firestore {
         && request.resource.data.user_id == uid
         && request.resource.data.get('email', null) == tokenEmail()
         && !hasApplication(request.resource.data)
+        && !('certifications' in request.resource.data)
         && request.resource.data.get('team_id', null) == null;
 
       // Users can add or change their own fields (profile, their application,
       // ...) within the checks above. Nobody can change `admin` or `user_id`
-      // from the app. Admins can edit other fields on anyone, but only the
-      // review fields of an application.
+      // from the app, and nobody can award themselves a certificate. Admins
+      // can edit other fields on anyone, but only the review fields of an
+      // application.
       allow update: if !changedKeys().hasAny(['admin', 'user_id'])
         && ((isSelf(uid)
+              && !changedKeys().hasAny(['certifications'])
               && emailIsOwn()
               && applicationSubmitIsValid()
               && teamChangeIsConsistent(uid))
@@ -177,13 +182,6 @@ service cloud.firestore {
     // ---- admin-only ---------------------------------------------------------
     match /demos/{id} {
       allow read: if isAdmin();
-    }
-
-    match /certifications/{id} {
-      allow read: if isAdmin()
-        || (signedIn() && resource.data.user_id == request.auth.uid);
-      allow create: if isAdmin()
-        && request.resource.data.issued_by == request.auth.uid;
     }
 
     // Everything else is denied by default.
