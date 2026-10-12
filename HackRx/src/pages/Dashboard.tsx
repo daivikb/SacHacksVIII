@@ -8,6 +8,9 @@ import { useNavigate } from "react-router";
 import { useGlitchTriggers } from "@/hooks/useGlitchTriggers";
 import { fetchApplicationStatus, type ApplicationStatus } from "@/services/application.service";
 import { useAcceptance } from "@/hooks/useAcceptance";
+import { X } from "lucide-react";
+
+const APPEAL_VIDEO = "https://www.youtube.com/embed/8RFbx4lK-Qs?si=2Spwih1i9thvaOdt";
 
 // Midnight Pacific at the start of each day. November dates use PST (UTC-8):
 // daylight saving ends Nov 1, 2026.
@@ -51,6 +54,21 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const applyTriggers = useGlitchTriggers();
   const teamsTriggers = useGlitchTriggers();
+  const appealTriggers = useGlitchTriggers();
+  const [appealOpen, setAppealOpen] = useState(false);
+
+  // While the appeal video is up: lock page scroll and let Escape close it.
+  useEffect(() => {
+    if (!appealOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setAppealOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [appealOpen]);
   const toApplicationForm = () => {
     navigate("/apply")
   }
@@ -103,6 +121,16 @@ const Dashboard = () => {
           </button>
         )}
         {statusPill(display.label, display.dot)}
+        {status === "rejected" && (
+          <button
+            type="button"
+            className="nav-cta cursor-pointer !px-7 !py-3 !text-base"
+            {...appealTriggers}
+            onClick={() => setAppealOpen(true)}
+          >
+            Appeal
+          </button>
+        )}
       </div>
     </>
   );
@@ -126,7 +154,38 @@ const Dashboard = () => {
         {!loading && (accepted
           ? <Countdown label="Event starts in" target={EVENT_START} />
           : <Countdown label="Applications close in" target={APPLICATIONS_CLOSE} />)}
+        {/* Only shown once the user's application has come back rejected. */}
       </section>
+
+      {/* Appeal: the video takes over the whole screen until closed. */}
+      {appealOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Appeal"
+          className="fixed inset-0 z-[1000] bg-black"
+        >
+          <iframe
+            className="h-full w-full"
+            src={`${APPEAL_VIDEO}&autoplay=1`}
+            title="Appeal video"
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allowFullScreen
+          />
+          <button
+            type="button"
+            autoFocus
+            onClick={() => setAppealOpen(false)}
+            aria-label="Close"
+            title="Close (Esc)"
+            className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+          >
+            <X className="h-6 w-6" strokeWidth={3} />
+          </button>
+        </div>
+      )}
     </Layout>
   );
 };
