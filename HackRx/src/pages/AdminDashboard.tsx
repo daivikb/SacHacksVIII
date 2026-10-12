@@ -9,7 +9,7 @@
  *   · team leaders (no leader field anywhere)
  *   · the "Waiting on you" request queue
  *   · team bulk actions (no service functions exist for them)
- *   · the awards list, event dates/venue and team size cap (hardcoded constants)
+ *   · the awards list and event dates/venue (hardcoded constants)
  *
  * Not shown at all (no placeholder line): per-hacker pitch, logistics and class
  * year from the design — applications don't store those fields.
@@ -39,6 +39,7 @@ import {
   reviewApplication,
   type AdminWorkspace,
 } from "@/services/admin.service";
+import { MAX_TEAM_SIZE } from "@/services/team.service";
 
 /* ------------------------------------------------------------------ */
 /* Config                                                              */
@@ -56,10 +57,6 @@ const EVENT_DATES = "10–11 October 2026";
 const EVENT_VENUE =
   "Awarded at SacHacks VIII, hosted at the University of California, Davis in partnership with UC Davis Health.";
 const DEFAULT_CERT_TITLE = "HackRx Participant"; // matches issueCertification's fallback
-// PLACEHOLDER — the team size cap, shown as "— of 4" in the Teams table. Should be an
-// event setting in Firestore; nothing enforces or stores it today.
-// Seen: Teams tab → main table → MEMBERS column.
-const MAX_TEAM_SIZE = 4;
 
 const EMPTY: AdminWorkspace = { applications: [], teams: [], demos: [], members: [], certifications: [] };
 
