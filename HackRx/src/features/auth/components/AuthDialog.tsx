@@ -348,7 +348,7 @@ export const AuthDialog = ({ open, mode, onOpenChange, onModeChange }: AuthDialo
               <dt>Press</dt>
               <dd>contact@sachacks.io</dd>
               <dt>Where</dt>
-              <dd>UC Davis, Davis, CA — October 17, 2026</dd>
+              <dd>UC Davis, Davis, CA — November 15th, 2026</dd>
             </dl>
             <Button
               type="button"
