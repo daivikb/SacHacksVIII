@@ -38,15 +38,7 @@ export const AppRoutes = () => (
 
     <Route path="/" element={<Home />} />
 
-    <Route
-      path="/apply"
-      element={
-        <Protected>
-          <SignupPage />
-        </Protected>
-      }
-    />
-    <Route path="/application-form" element={<Navigate to="/apply" replace />} />
+    <Route path="/apply" element={<SignupPage />} />
     <Route path="/signup" element={<Navigate to="/apply" replace />} />
 
     <Route
