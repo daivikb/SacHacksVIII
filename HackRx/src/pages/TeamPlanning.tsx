@@ -8,6 +8,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 type Person = { email: string; owner: boolean; pending: boolean };
 
+// Owner + members + pending invites can't go past this.
+const MAX_TEAM_SIZE = 3;
+
 // Shared row + icon-button styles so both lists line up the same way.
 const rowClass =
     "flex items-center justify-between gap-3 rounded-[3px] border border-white/10 bg-black/25 px-3 py-2";
@@ -144,9 +147,11 @@ const SendInviteSection = ({
 }) => {
     const [email, setEmail] = useState("");
     const [error, setError] = useState<string | null>(null);
+    const full = people.length >= MAX_TEAM_SIZE;
 
     const submit = (e: FormEvent) => {
         e.preventDefault();
+        if (full) return;
         const value = email.trim().toLowerCase();
         if (!EMAIL_RE.test(value)) return setError("Enter a valid email address.");
         if (people.some((p) => p.email.toLowerCase() === value))
@@ -173,19 +178,27 @@ const SendInviteSection = ({
                         setEmail(e.target.value);
                         if (error) setError(null);
                     }}
+                    disabled={full}
                     aria-invalid={!!error}
-                    aria-describedby={error ? "invite-email-error" : undefined}
-                    className="h-10 min-w-0 flex-1 rounded-[3px] border px-3 text-sm placeholder:text-white/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                    aria-describedby={error ? "invite-email-error" : full ? "invite-full-note" : undefined}
+                    className="h-10 min-w-0 flex-1 rounded-[3px] border px-3 text-sm placeholder:text-white/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 disabled:cursor-not-allowed disabled:opacity-50"
                 />
                 <button
                     type="submit"
-                    className={joinBtnClass}
-                    title="Send invite"
+                    disabled={full}
+                    className={`${joinBtnClass} disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent`}
+                    title={full ? "Team is full" : "Send invite"}
                     aria-label="Send invite"
                 >
                     <Send className="h-5 w-5" />
                 </button>
             </form>
+            {full && (
+                <p id="invite-full-note">
+                    Your team is full ({MAX_TEAM_SIZE}/{MAX_TEAM_SIZE}, including pending invites). Remove someone
+                    or cancel an invite to add another person.
+                </p>
+            )}
             {error && (
                 <p id="invite-email-error" role="alert" className="!text-red-400">
                     {error}
@@ -266,6 +279,7 @@ const TeamPlanning = () => {
 
     const invitePerson = (email: string) =>
         setPeople((prev) => {
+            if (prev.length >= MAX_TEAM_SIZE) return prev; // owner + members + pending already at the cap
             // Keep owner first, then pending invites, then confirmed members.
             const lastPending = prev.reduce((idx, p, i) => (p.owner || p.pending ? i : idx), -1);
             const next = [...prev];
