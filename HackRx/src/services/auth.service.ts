@@ -74,6 +74,8 @@ export interface Profile {
   email: string | null;
   full_name: string | null;
   username: string | null;
+  /** The team the user has been placed on; null until they're accepted. */
+  team_id: string | null;
 }
 
 /**
@@ -229,6 +231,8 @@ export async function fetchProfile(
         typeof data.full_name === "string" ? data.full_name : null,
       username:
         typeof data.username === "string" ? data.username : null,
+      team_id:
+        typeof data.team_id === "string" && data.team_id ? data.team_id : null,
     };
   } catch {
     return null;
