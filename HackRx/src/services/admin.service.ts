@@ -265,7 +265,7 @@ async function uniqueTeamCode(): Promise<string> {
  * Reviews an application.
  *
  * Approving also gives the applicant a unique team code in `team_id`, unless
- * they already have one.
+ * they already have one. Rejecting takes their team code away again.
  */
 export async function reviewApplication(
   id: string,
@@ -282,7 +282,7 @@ export async function reviewApplication(
     };
 
     if (status !== "approved") {
-      await updateDoc(ref, review);
+      await updateDoc(ref, { ...review, team_id: null });
       return null;
     }
 
