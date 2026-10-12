@@ -7,6 +7,7 @@ import Account from "@/pages/Account";
 import AdminDashboard from "@/pages/AdminDashboard";
 import AdminAccount from "@/pages/AdminAccount";
 import TeamPlanning from "@/pages/TeamPlanning";
+import ApplicationForm from "@/pages/ApplicationForm";
 import { useAuth } from "@/context/auth-context";
 import { useAdmin } from "@/hooks/useAdmin";
 
@@ -77,6 +78,13 @@ export const AppRoutes = () => (
         <Protected>
           <TeamPlanning />
         </Protected>
+      }
+    />
+
+    <Route
+      path="/application-form"
+      element={
+        <ApplicationForm />
       }
     />
 
