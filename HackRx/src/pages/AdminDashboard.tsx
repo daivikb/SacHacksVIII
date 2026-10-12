@@ -88,7 +88,6 @@ interface Row {
   interests: string;
   motivations: string;
   resumeUrl: string;
-  resumeName: string;
   github: string;
   conduct: string;
   signature: string;
@@ -483,9 +482,12 @@ const AdminDashboard = () => {
       if (uid && title && !certByUser.has(uid)) certByUser.set(uid, title);
     });
 
-    // Applications, keyed by email so they can be matched to user accounts.
+    // Applications are stored under the applicant's user id; older ones are
+    // matched to user accounts by email instead.
+    const appByUser = new Map<string, (typeof workspace.applications)[number]>();
     const appByEmail = new Map<string, (typeof workspace.applications)[number]>();
     workspace.applications.forEach((a) => {
+      appByUser.set(text(a.user_id, a.id), a);
       const e = text(a.email).toLowerCase();
       if (e && !appByEmail.has(e)) appByEmail.set(e, a);
     });
@@ -505,7 +507,6 @@ const AdminDashboard = () => {
       interests: list(a?.interests),
       motivations: list(a?.motivations),
       resumeUrl: text(a?.resume_url),
-      resumeName: text(a?.resume_name),
       github: text(a?.github),
       conduct: a?.code_of_conduct_agreed === true ? "Agreed" : "",
       signature: text(a?.consent_signature),
@@ -523,12 +524,12 @@ const AdminDashboard = () => {
     // Everyone with an account.
     workspace.members.forEach((m) => {
       const email = text(m.email);
-      const app = email ? appByEmail.get(email.toLowerCase()) : undefined;
+      const app = appByUser.get(m.id) ?? (email ? appByEmail.get(email.toLowerCase()) : undefined);
       if (app) matchedApps.add(app.id);
       rows.push({
         key: `member:${m.id}`,
         name: text(m.full_name, text(m.username, "New member")),
-        email: text(email, "Email unavailable"),
+        email: text(app?.email, text(email, "Email unavailable")),
         school: text(app?.institution, "No institution"),
         ...answers(app),
         signup: app ? toSignupStatus(app.status) : "none",
@@ -1350,7 +1351,7 @@ const AdminDashboard = () => {
                     <DetailRow label="Résumé">
                       {/* SECURITY — only link values that are plain https URLs. */}
                       {person && isHttpsUrl(person.resumeUrl)
-                        ? <a href={person.resumeUrl} target="_blank" rel="noopener noreferrer">{person.resumeName || "View résumé"}</a>
+                        ? <a href={person.resumeUrl} target="_blank" rel="noopener noreferrer">View résumé</a>
                         : "—"}
                     </DetailRow>
                     <DetailRow label="GitHub">

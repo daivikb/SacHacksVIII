@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Layout, Amoeba } from "@/components/layout/Layout";
 import { PortalDecor } from "@/components/layout/PortalDecor";
 import { useAuth } from "@/context/auth-context";
-import { fetchProfile, type Profile } from "@/services/auth.service";
+import { fetchApplicationStatus, fetchProfile, type Profile } from "@/services/auth.service";
 import { Countdown } from "@/features/home/components/Countdown";
 import { useNavigate } from "react-router";
 import { useGlitchTriggers } from "@/hooks/useGlitchTriggers";
@@ -10,20 +10,29 @@ import { useGlitchTriggers } from "@/hooks/useGlitchTriggers";
 const Dashboard = () => {
   const { user } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
+  // undefined while loading, null when no application has been submitted.
+  const [status, setStatus] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     if (!user) return;
     fetchProfile(user.uid).then(setProfile);
+    fetchApplicationStatus(user.uid).then(setStatus);
   }, [user]);
 
   const name = profile?.username || profile?.full_name || user?.email?.split("@")[0] || "hacker";
   
-  const submission = false;
+  const submission = Boolean(status);
+  const statusLabel =
+    status === undefined ? "Checking..."
+    : status === null ? "Not submitted"
+    : status === "approved" || status === "accepted" ? "Accepted"
+    : status === "rejected" || status === "declined" ? "Declined"
+    : "Submitted";
 
   const navigate = useNavigate();
   const applyTriggers = useGlitchTriggers();
   const toApplicationForm = () => {
-    navigate("/application-form")
+    navigate("/apply")
   }
 
   return (
@@ -34,7 +43,7 @@ const Dashboard = () => {
         <Amoeba tone="gold" size="tiny" style={{ bottom: "18%", right: "8%", animationDelay: "-6s, -1s" }} />
         <span className="eyebrow">Hacker Hub</span>
         <h1 className="chapter-title">Welcome, {name}</h1>
-        <p className="chapter-sub">Applications open! Apply now!</p>
+        <p className="chapter-sub">{submission ? "Your application has been received." : "Applications open! Apply now!"}</p>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
           {/* Same pill style + glitch hover as the nav's Hacker Hub button, sized up */}
           <button
@@ -42,15 +51,16 @@ const Dashboard = () => {
             className="nav-cta cursor-pointer !px-7 !py-3 !text-base"
             {...applyTriggers}
             onClick={toApplicationForm}
+            disabled={status !== null}
           >
-            Apply
+            {submission ? "Applied" : "Apply"}
           </button>
           <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/30 px-4 py-2.5 font-sans text-sm text-[var(--cream)]">
             <span
               aria-hidden="true"
               className={`h-2.5 w-2.5 rounded-full ${submission ? "bg-blue-400" : "bg-red-400"}`}
             />
-            Status: {submission ? "Pending..." : "Not submitted"}
+            Status: {statusLabel}
           </span>
         </div>
         <Countdown />

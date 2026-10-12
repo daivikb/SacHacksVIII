@@ -226,16 +226,6 @@ export const AuthDialog = ({ open, mode, onOpenChange, onModeChange }: AuthDialo
               <p className="venom-switch">
                 Already have an account?{" "}
                 <button type="button" onClick={() => onModeChange("login")}>Log in instead</button>
-                <span aria-hidden="true"> · </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onOpenChange(false);
-                    navigate("/apply");
-                  }}
-                >
-                  Submit an application
-                </button>
               </p>
             </form>
           </Form>

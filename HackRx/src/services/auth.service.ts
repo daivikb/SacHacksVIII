@@ -24,11 +24,10 @@ import {
   getDoc,
   serverTimestamp,
   setDoc,
+  updateDoc,
 } from "firebase/firestore";
 
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-
-import { auth, db, storage } from "@/integrations/firebase/client";
+import { auth, db } from "@/integrations/firebase/client";
 
 export const signUpSchema = z
   .object({
@@ -105,9 +104,7 @@ export const MOTIVATIONS = [
   "Having fun with friends",
 ];
 export const TEAM_STATUSES = [
-  "Yes, I have a team",
-  "Yes, but we're looking for more teammates",
-  "No, I'd like help finding a team",
+  "Yes, I would like to join a team",
   "No, I prefer working solo",
 ];
 export const TSHIRT_SIZES = ["XS", "S", "M", "L", "XL", "2XL", "3XL"];
@@ -139,25 +136,10 @@ export const REFERRAL_SOURCES = [
 export const CODE_OF_CONDUCT_URL =
   "https://github.com/SacHacksHackathon/sachacks-policies/blob/main/code-of-conduct.md";
 
-/** Resume upload limits. */
-export const RESUME_MAX_BYTES = 5 * 1024 * 1024;
-export const RESUME_EXTENSIONS = [".pdf", ".doc", ".docx"];
-
-export function validateResume(file: File | null): string | null {
-  if (!file) return "Please upload your résumé";
-  const name = file.name.toLowerCase();
-  if (!RESUME_EXTENSIONS.some((ext) => name.endsWith(ext))) {
-    return "Upload a PDF or Word document";
-  }
-  if (file.size > RESUME_MAX_BYTES) return "Keep your résumé under 5 MB";
-  return null;
-}
-
-/** Full registration: the account plus the details organisers review. */
-export const registerSchema = z
+/** The participant application a signed-in hacker submits from the Hacker Hub. */
+export const applicationSchema = z
   .object({
     full_name: z.string().trim().min(1, "Enter your full name").max(100, "Keep this under 100 characters"),
-    email: z.string().trim().email("Please enter a valid email").max(255),
     phone: z
       .string()
       .trim()
@@ -182,6 +164,18 @@ export const registerSchema = z
       .array(z.string())
       .min(1, "Select at least one option")
       .max(MAX_MOTIVATIONS, `Select up to ${MAX_MOTIVATIONS}`),
+    resume_link: z
+      .string()
+      .trim()
+      .min(1, "Provide a link to your résumé")
+      .max(500, "Keep this under 500 characters")
+      .refine((v) => {
+        try {
+          return new URL(v).protocol === "https:";
+        } catch {
+          return false;
+        }
+      }, "Enter a full link beginning with https://"),
     github: z
       .string()
       .trim()
@@ -198,11 +192,6 @@ export const registerSchema = z
       .refine((v) => REFERRAL_SOURCES.includes(v), "Select how you heard about SacHacks"),
     goals: z.string().trim().max(2000, "Keep this under 2000 characters"),
     additional_info: z.string().trim().max(2000, "Keep this under 2000 characters"),
-    password: z
-      .string()
-      .min(8, "Password must be at least 8 characters")
-      .max(72, "Password must be under 72 characters"),
-    confirmPassword: z.string(),
   })
   .refine((v) => v.academic_standing !== HIGH_SCHOOL || v.high_school_case.length > 0, {
     message: "High school applicants must complete this statement",
@@ -215,10 +204,6 @@ export const registerSchema = z
   .refine((v) => v.institution !== INSTITUTION_OTHER || v.institution_other.length > 0, {
     message: "Tell us which school or institution",
     path: ["institution_other"],
-  })
-  .refine((v) => v.password === v.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
   });
 
 export const loginSchema = z.object({
@@ -245,7 +230,7 @@ export const profileSchema = z.object({
 });
 
 export type SignUpValues = z.infer<typeof signUpSchema>;
-export type RegisterValues = z.infer<typeof registerSchema>;
+export type ApplicationValues = z.infer<typeof applicationSchema>;
 export type LoginValues = z.infer<typeof loginSchema>;
 export type ForgotValues = z.infer<typeof forgotSchema>;
 export type ProfileValues = z.infer<typeof profileSchema>;
@@ -299,58 +284,22 @@ export async function signUp(values: SignUpValues): Promise<string | null> {
 }
 
 /**
- * Creates an account together with everything the admin roster displays.
+ * Saves the signed-in user's application onto their existing profile.
  *
  * Firestore structure:
  *
- * users/{uid}         full_name, email
- * applications/{uid}  every answer on the application form, status: "pending"
- *
- * Storage structure:
- *
- * resumes/{uid}/{file name}
- *
- * The admin workspace matches the two documents by email, so both store the
- * same one.
+ * users/{uid}  every answer on the application form, status: "pending"
  */
-export async function register(
-  values: RegisterValues,
-  resume: File,
+export async function submitApplication(
+  values: ApplicationValues,
 ): Promise<string | null> {
-  let uid: string;
-  let email: string;
-
-  try {
-    const credential = await createUserWithEmailAndPassword(
-      auth,
-      values.email.trim(),
-      values.password,
-    );
-    uid = credential.user.uid;
-    email = credential.user.email ?? values.email.trim();
-    adminLogout();
-  } catch (error) {
-    return error instanceof Error
-      ? error.message
-      : "Unable to create your account";
+  if (!auth.currentUser) {
+    return "You must be signed in to submit an application.";
   }
+  const uid = auth.currentUser.uid;
 
   try {
-    const resumeRef = ref(storage, `resumes/${uid}/${resume.name}`);
-    await uploadBytes(resumeRef, resume, { contentType: resume.type || undefined });
-    const resumeUrl = await getDownloadURL(resumeRef);
-
-    await setDoc(doc(db, "users", uid), {
-      user_uid: uid,
-      email,
-      full_name: values.full_name,
-      created_at: serverTimestamp(),
-      updated_at: serverTimestamp(),
-    });
-
-    await setDoc(doc(db, "applications", uid), {
-      user_id: uid,
-      email,
+    await updateDoc(doc(db, "users", uid), {
       full_name: values.full_name,
       phone: values.phone || null,
       age_range: values.age_range,
@@ -370,12 +319,11 @@ export async function register(
       first_hackathon: values.first_hackathon,
       interests: values.interests,
       motivations: values.motivations,
-      resume_url: resumeUrl,
-      resume_name: resume.name,
+      resume_url: values.resume_link,
       github: values.github || null,
       code_of_conduct_agreed: values.code_of_conduct,
       consent_signature: values.signature,
-      team_status: values.team_status,
+      team_preference: values.team_status,
       tshirt_size: values.tshirt_size,
       dietary: values.dietary.map((d) =>
         d === DIETARY_OTHER ? values.dietary_other : d,
@@ -385,12 +333,32 @@ export async function register(
       additional_info: values.additional_info || null,
       status: "pending",
       created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
     });
 
     return null;
   } catch (error) {
-    const detail = error instanceof Error ? ` (${error.message})` : "";
-    return `Your account was created, but we couldn't save your application${detail}. Please contact the organisers.`;
+    return error instanceof Error
+      ? error.message
+      : "Unable to submit your application";
+  }
+}
+
+/**
+ * Reads the signed-in user's application status ("pending", "approved",
+ * "rejected"), or null when they have not applied yet.
+ */
+export async function fetchApplicationStatus(
+  userId: string,
+): Promise<string | null> {
+  try {
+    // The application is saved onto the user's own document, so `status`
+    // is only present once they have applied.
+    const snapshot = await getDoc(doc(db, "users", userId));
+    const status = snapshot.data()?.status;
+    return typeof status === "string" ? status : null;
+  } catch {
+    return null;
   }
 }
 
