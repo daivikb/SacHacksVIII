@@ -99,9 +99,11 @@ export async function signUp(values: SignUpValues): Promise<string | null> {
 
     await setDoc(userRef, {
       user_uid: credential.user.uid,
+      app_id: null,
+      team_id: null,
+      admin: false,
       email: credential.user.email ?? values.email.trim(),
-      created_at: serverTimestamp(),
-      updated_at: serverTimestamp(),
+      invitations: null,
     });
 
     console.log("5. Firestore write completed");
@@ -165,9 +167,11 @@ export async function signInWithGoogle(): Promise<string | null> {
     if (!snapshot.exists()) {
       await setDoc(userRef, {
         user_uid: user.uid,
+        app_id: null,
+        team_id: null,
+        admin: false,
         email: user.email,
-        created_at: serverTimestamp(),
-        updated_at: serverTimestamp(),
+        invitations: null,
       });
     }
 
