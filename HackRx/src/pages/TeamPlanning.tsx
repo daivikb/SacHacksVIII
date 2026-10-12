@@ -158,7 +158,7 @@ const TeamPlanning = () => {
                 <Amoeba tone="violet" size="sm" style={{ top: "18%", left: "6%", animationDelay: "-2s, -5s" }} />
                 <Amoeba tone="gold" size="tiny" style={{ bottom: "18%", right: "8%", animationDelay: "-6s, -1s" }} />
 
-                <div className="grid w-[86vw] grid-cols-1 items-stretch gap-6 text-left md:min-h-[72svh] md:grid-cols-2 md:gap-10">
+                <div className="grid w-[86vw] grid-cols-1 items-stretch gap-6 text-left md:min-h-[72svh] md:grid-cols-2 md:gap-15">
                     <TeamSection people={people} onRemove={removePerson} />
                     <InviteSection emails={invites} onDecline={declineInvite} onJoin={joinTeam} />
                 </div>
