@@ -4,33 +4,27 @@ import { isAdmin, isHardcodedAdmin } from "@/services/admin.service";
 
 export function useAdmin() {
   const { user, loading: authLoading } = useAuth();
-  const [admin, setAdmin] = useState(isHardcodedAdmin());
-  const [loading, setLoading] = useState(!isHardcodedAdmin());
+  // The role lookup is stored with the uid it belongs to, so a result from a
+  // previous session can never be read as the current user's.
+  const [checked, setChecked] = useState<{ uid: string; allowed: boolean } | null>(null);
+  const hardcoded = isHardcodedAdmin();
+  const uid = user?.uid ?? null;
 
   useEffect(() => {
+    if (hardcoded || authLoading || !uid) return;
+
     let active = true;
-
-    if (isHardcodedAdmin()) {
-      setAdmin(true);
-      setLoading(false);
-      return;
-    }
-
-    if (authLoading) return;
-    if (!user) {
-      setAdmin(false);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    void isAdmin(user.uid).then((allowed) => {
-      if (!active) return;
-      setAdmin(allowed);
-      setLoading(false);
+    void isAdmin(uid).then((allowed) => {
+      if (active) setChecked({ uid, allowed });
     });
     return () => { active = false; };
-  }, [authLoading, user]);
+  }, [hardcoded, authLoading, uid]);
 
-  return { isAdmin: admin, loading: isHardcodedAdmin() ? false : authLoading || loading };
+  if (hardcoded) return { isAdmin: true, loading: false };
+
+  const resolved = !uid || checked?.uid === uid;
+  return {
+    isAdmin: !!uid && checked?.uid === uid && checked.allowed,
+    loading: authLoading || !resolved,
+  };
 }

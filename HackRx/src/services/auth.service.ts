@@ -42,6 +42,24 @@ export const signUpSchema = z
     path: ["confirmPassword"],
   });
 
+/** Full registration: the account plus the details organisers review. */
+export const registerSchema = z
+  .object({
+    full_name: z.string().trim().min(1, "Enter your full name").max(100, "Keep this under 100 characters"),
+    username: z.string().trim().max(40, "Keep this under 40 characters").optional(),
+    institution: z.string().trim().min(1, "Enter your school or organisation").max(120, "Keep this under 120 characters"),
+    email: z.string().trim().email("Please enter a valid email").max(255),
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .max(72, "Password must be under 72 characters"),
+    confirmPassword: z.string(),
+  })
+  .refine((v) => v.password === v.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
 export const loginSchema = z.object({
   email: z.string().trim().min(1, "Enter your email or username").max(255),
   password: z.string().min(1, "Please enter your password"),
@@ -66,6 +84,7 @@ export const profileSchema = z.object({
 });
 
 export type SignUpValues = z.infer<typeof signUpSchema>;
+export type RegisterValues = z.infer<typeof registerSchema>;
 export type LoginValues = z.infer<typeof loginSchema>;
 export type ForgotValues = z.infer<typeof forgotSchema>;
 export type ProfileValues = z.infer<typeof profileSchema>;
@@ -90,6 +109,7 @@ export async function signUp(values: SignUpValues): Promise<string | null> {
       values.password,
     );
 
+    adminLogout();
     console.log("2. Auth user created:", credential.user.uid);
     console.log("3. Firestore project:", db.app.options.projectId);
 
@@ -118,6 +138,61 @@ export async function signUp(values: SignUpValues): Promise<string | null> {
 }
 
 /**
+ * Creates an account together with everything the admin roster displays.
+ *
+ * Firestore structure:
+ *
+ * users/{uid}         full_name, username, email
+ * applications/{uid}  full_name, email, institution, status: "pending"
+ *
+ * The admin workspace matches the two by email, so both store the same one.
+ */
+export async function register(values: RegisterValues): Promise<string | null> {
+  let uid: string;
+  let email: string;
+
+  try {
+    const credential = await createUserWithEmailAndPassword(
+      auth,
+      values.email.trim(),
+      values.password,
+    );
+    uid = credential.user.uid;
+    email = credential.user.email ?? values.email.trim();
+    adminLogout();
+  } catch (error) {
+    return error instanceof Error
+      ? error.message
+      : "Unable to create your account";
+  }
+
+  try {
+    await setDoc(doc(db, "users", uid), {
+      user_uid: uid,
+      email,
+      full_name: values.full_name,
+      username: values.username || null,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+    });
+
+    await setDoc(doc(db, "applications", uid), {
+      user_id: uid,
+      email,
+      full_name: values.full_name,
+      institution: values.institution,
+      status: "pending",
+      created_at: serverTimestamp(),
+    });
+
+    return null;
+  } catch (error) {
+    const detail = error instanceof Error ? ` (${error.message})` : "";
+    return `Your account was created, but we couldn't save your details${detail}. Log in and try again from your account page.`;
+  }
+}
+
+/**
  * Signs in with an email address.
  *
  * Username authentication previously depended on a Supabase Edge Function.
@@ -140,6 +215,8 @@ export async function signIn(values: LoginValues): Promise<string | null> {
       identifier,
       values.password,
     );
+    // A participant session replaces any admin session left open in this tab.
+    adminLogout();
 
     return null;
   } catch (error) {
@@ -157,6 +234,7 @@ export async function signInWithGoogle(): Promise<string | null> {
     const provider = new GoogleAuthProvider();
     const result = await signInWithPopup(auth, provider);
     const user = result.user;
+    adminLogout();
 
     const userRef = doc(db, "users", user.uid);
     const snapshot = await getDoc(userRef);
