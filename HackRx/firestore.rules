@@ -29,11 +29,7 @@ rules_version = '2';
 //   pending    list of invited uids. Members + pending can't exceed 3.
 //   autofill   whether open spots get filled with random hackers
 //
-// accepted_users/{lowercased email}
-//   user_id, email   lets a hacker look up an accepted participant's uid by
-//              their exact email (single-document get only, never listed).
-//              Written by admins on approval, or by an accepted user for
-//              their own email.
+// Only `users` and `teams` exist. A user is ACCEPTED once users.team_id is set.
 //
 // Team membership is stored on both sides (users.team_id and teams.members)
 // and must always agree, so joining, leaving or switching teams has to update
@@ -98,6 +94,37 @@ service cloud.firestore {
       return value is list ? value : [];
     }
 
+    // The caller's own team_id, or null if they haven't been accepted.
+    function myTeamId() {
+      return get(userPath(request.auth.uid)).data.get('team_id', null);
+    }
+
+    function callerAccepted() {
+      return signedIn() && myTeamId() != null;
+    }
+
+    // `uid` is a member or pending invitee of the caller's team.
+    function onMyTeam(uid) {
+      let myTeam = myTeamId();
+      return myTeam != null
+        && exists(teamPath(myTeam))
+        && (uid in listOr(get(teamPath(myTeam)).data.get('members', null))
+            || uid in listOr(get(teamPath(myTeam)).data.get('pending', null)));
+    }
+
+    // The user in `data` is on a team that has invited the caller.
+    function onTeamThatInvitedMe(data) {
+      let theirTeam = data.get('team_id', null);
+      return theirTeam != null
+        && theirTeam in listOr(get(userPath(request.auth.uid)).data.get('invitations', null));
+    }
+
+    // Lets the Teams page show the emails of your teammates, the people you've
+    // invited, and the teams that invited you.
+    function knowsUser(uid, data) {
+      return signedIn() && (onMyTeam(uid) || onTeamThatInvitedMe(data));
+    }
+
     // Someone on the caller's team is adding that team's id to this user's
     // `invitations`, and the team's `pending` lists this user after the write.
     function beingInvited(uid) {
@@ -144,7 +171,12 @@ service cloud.firestore {
 
     // ---- users --------------------------------------------------------------
     match /users/{uid} {
-      allow read: if isSelf(uid) || isAdmin();
+      allow get: if isSelf(uid) || isAdmin() || knowsUser(uid, resource.data);
+
+      // Invite lookup: an accepted user may query users by email, one doc at
+      // a time (the app checks the result has a team_id). Admins can list all.
+      allow list: if isAdmin()
+        || (callerAccepted() && request.query.limit <= 1);
 
       // Sign-up (email or Google): a non-admin profile for your own uid, with
       // your own email, no application and no team yet.
@@ -238,23 +270,6 @@ service cloud.firestore {
         || (signedIn()
             && resource.data.members == [request.auth.uid]
             && teamIdAfterWrite(request.auth.uid) != teamId);
-    }
-
-    // ---- accepted participant directory --------------------------------------
-    match /accepted_users/{email} {
-      // Look up one exact email; listing the whole directory is not allowed.
-      allow get: if signedIn();
-      allow list: if false;
-
-      allow create, update: if isAdmin()
-        || (signedIn()
-            && tokenEmail() is string
-            && email == tokenEmail().lower()
-            && request.resource.data.keys().hasOnly(['user_id', 'email'])
-            && request.resource.data.user_id == request.auth.uid
-            && get(userPath(request.auth.uid)).data.get('team_id', null) != null);
-
-      allow delete: if isAdmin();
     }
 
     // ---- admin-only ---------------------------------------------------------

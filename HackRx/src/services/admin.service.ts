@@ -32,8 +32,6 @@ import {
   type LoginValues,
 } from "@/services/auth.service";
 
-import { acceptedUserKey } from "@/services/team.service";
-
 /**
  * These types intentionally remain flexible during the migration.
  *
@@ -294,12 +292,6 @@ export async function reviewApplication(
       // Re-approving must not replace a code the applicant may already have shared.
       const hasCode = !!snapshot.data()?.team_id;
       tx.update(ref, hasCode ? review : { ...review, team_id: code });
-      // Put them on the accepted user list so teammates can invite them by email.
-      const email = snapshot.data()?.email;
-      if (typeof email === "string" && email.trim()) {
-        const key = acceptedUserKey(email);
-        tx.set(doc(db, "accepted_users", key), { user_id: id, email: key });
-      }
     });
 
     return null;

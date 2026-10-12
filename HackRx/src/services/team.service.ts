@@ -16,12 +16,21 @@
  *   pending      list of uids invited to the party but not joined yet
  *   autofill     whether open spots get filled with random hackers
  *
- * accepted_users/{lowercased email}
- *   user_id, email   the "accepted user list": how an invite email is turned
- *                    into a uid. Only exact-email lookups are allowed.
+ * A user is accepted once their users doc has a team_id.
  */
 
-import { arrayUnion, doc, getDoc, setDoc, writeBatch } from "firebase/firestore";
+import {
+    arrayUnion,
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    limit,
+    query,
+    setDoc,
+    where,
+    writeBatch,
+} from "firebase/firestore";
 
 import { db } from "@/integrations/firebase/client";
 
@@ -127,31 +136,25 @@ export async function fetchTeamPlanning(uid: string): Promise<TeamPlanningData |
 }
 
 /* ------------------------------------------------------------------ */
-/* Accepted user list                                                  */
+/* Looking up accepted users                                           */
 /* ------------------------------------------------------------------ */
 
 /** Max owner + members + pending on one team. */
 export const MAX_TEAM_SIZE = 3;
 
-/** Document id in accepted_users for an email. */
-export const acceptedUserKey = (email: string) => email.trim().toLowerCase();
-
-const registered = new Set<string>();
-
 /**
- * Adds an accepted user to accepted_users so teammates can invite them by
- * email. Admin approval does this too; calling it on visit covers anyone
- * approved before that existed. Runs at most once per user per page load.
+ * Finds the users doc with this email (one doc at most; that's all the rules
+ * allow). Tries the lowercased email first, then exactly as typed.
  */
-export async function registerAcceptedUser(uid: string, email: string | null | undefined) {
-    if (!email || registered.has(uid)) return;
-    registered.add(uid);
-    try {
-        const key = acceptedUserKey(email);
-        await setDoc(doc(db, "accepted_users", key), { user_id: uid, email: key });
-    } catch {
-        registered.delete(uid); // try again next time
+async function findUserByEmail(email: string) {
+    const typed = email.trim();
+    for (const candidate of [...new Set([typed.toLowerCase(), typed])]) {
+        const result = await getDocs(
+            query(collection(db, "users"), where("email", "==", candidate), limit(1)),
+        );
+        if (!result.empty) return result.docs[0];
     }
+    return null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -172,14 +175,15 @@ export type InviteResult =
  * The last two happen in one batch, so they always agree.
  */
 export async function sendInvite(uid: string, teamId: string, email: string): Promise<InviteResult> {
-    const key = acceptedUserKey(email);
+    const key = email.trim().toLowerCase();
     try {
-        const entry = await getDoc(doc(db, "accepted_users", key));
-        const inviteeId = entry.exists() ? str(entry.data().user_id) : null;
-        if (!inviteeId) {
+        // Accepted = the users doc has a team_id.
+        const invitee = await findUserByEmail(email);
+        const inviteeId = invitee?.id ?? null; // users doc id is the uid
+        if (!invitee || !inviteeId || !idOf(invitee.data().team_id)) {
             return {
                 status: "warning",
-                message: `${key} isn't on the accepted hacker list. Only accepted participants can be invited. Check the spelling, or ask them to log in once after being accepted.`,
+                message: `${key} isn't an accepted hacker. Only accepted participants can be invited, so check the spelling.`,
             };
         }
         if (inviteeId === uid) return { status: "error", message: "You can't invite yourself." };
