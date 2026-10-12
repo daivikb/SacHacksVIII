@@ -231,10 +231,10 @@ export const AuthDialog = ({ open, mode, onOpenChange, onModeChange }: AuthDialo
                   type="button"
                   onClick={() => {
                     onOpenChange(false);
-                    navigate("/signup");
+                    navigate("/apply");
                   }}
                 >
-                  Full sign-up form
+                  Submit an application
                 </button>
               </p>
             </form>

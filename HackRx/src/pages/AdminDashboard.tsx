@@ -77,6 +77,27 @@ interface Row {
   name: string;
   email: string;
   school: string;
+  phone: string;
+  ageRange: string;
+  gender: string;
+  ethnicity: string;
+  standing: string;
+  highSchoolCase: string;
+  major: string;
+  firstHackathon: string;
+  interests: string;
+  motivations: string;
+  resumeUrl: string;
+  resumeName: string;
+  github: string;
+  conduct: string;
+  signature: string;
+  teamStatus: string;
+  tshirt: string;
+  dietary: string;
+  referral: string;
+  goals: string;
+  additionalInfo: string;
   signup: SignupStatus;
   cert: string | null;
   /** Null when this person registered but never submitted an application. */
@@ -219,6 +240,15 @@ const AWARDS: Award[] = [
 /* ------------------------------------------------------------------ */
 
 /** The service types are `{ id: string; [key: string]: unknown }`, so read defensively. */
+/** True only for well-formed https links — anything else is shown as plain text. */
+const isHttpsUrl = (v: string): boolean => {
+  try {
+    return new URL(v).protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 const text = (v: unknown, fallback = ""): string =>
   typeof v === "string" && v.trim() ? v.trim() : fallback;
 
@@ -460,6 +490,33 @@ const AdminDashboard = () => {
       if (e && !appByEmail.has(e)) appByEmail.set(e, a);
     });
 
+    // Registration answers. Optional ones may be blank; ethnicity is a list.
+    const list = (v: unknown) =>
+      Array.isArray(v) ? v.map((e) => text(e)).filter(Boolean).join(", ") : "";
+    const answers = (a: (typeof workspace.applications)[number] | undefined) => ({
+      phone: text(a?.phone),
+      ageRange: text(a?.age_range),
+      gender: text(a?.gender),
+      ethnicity: list(a?.ethnicity),
+      standing: text(a?.academic_standing),
+      highSchoolCase: text(a?.high_school_case),
+      major: text(a?.major),
+      firstHackathon: text(a?.first_hackathon),
+      interests: list(a?.interests),
+      motivations: list(a?.motivations),
+      resumeUrl: text(a?.resume_url),
+      resumeName: text(a?.resume_name),
+      github: text(a?.github),
+      conduct: a?.code_of_conduct_agreed === true ? "Agreed" : "",
+      signature: text(a?.consent_signature),
+      teamStatus: text(a?.team_status),
+      tshirt: text(a?.tshirt_size),
+      dietary: list(a?.dietary),
+      referral: text(a?.referral_source),
+      goals: text(a?.goals),
+      additionalInfo: text(a?.additional_info),
+    });
+
     const rows: Row[] = [];
     const matchedApps = new Set<string>();
 
@@ -473,6 +530,7 @@ const AdminDashboard = () => {
         name: text(m.full_name, text(m.username, "New member")),
         email: text(email, "Email unavailable"),
         school: text(app?.institution, "No institution"),
+        ...answers(app),
         signup: app ? toSignupStatus(app.status) : "none",
         cert: certByUser.get(m.id) ?? null,
         applicationId: app ? app.id : null,
@@ -488,6 +546,7 @@ const AdminDashboard = () => {
         name: text(a.full_name, "Unnamed applicant"),
         email: text(a.email, "Email unavailable"),
         school: text(a.institution, "No institution"),
+        ...answers(a),
         signup: toSignupStatus(a.status),
         cert: null,
         applicationId: a.id,
@@ -708,9 +767,21 @@ const AdminDashboard = () => {
   };
 
   const exportCsv = () => {
-    const header = ["Name", "Email", "Institution", "Signup", "Certificate"];
+    const header = [
+      "Name", "Email", "Phone", "Age range", "Gender", "Race / ethnicity",
+      "Institution", "Academic standing", "High school statement", "Major",
+      "First hackathon", "Areas of interest", "Motivations", "Resume", "GitHub",
+      "Code of Conduct", "Consent signature", "Team status", "T-shirt size",
+      "Dietary restrictions", "Referral source", "Goals", "Additional information",
+      "Application", "Certificate",
+    ];
     const body = visibleRoster.map((r) => [
-      r.name, r.email, r.school, statusTone(r.signup).label, r.cert ?? "",
+      r.name, r.email, r.phone, r.ageRange, r.gender, r.ethnicity,
+      r.school, r.standing, r.highSchoolCase, r.major,
+      r.firstHackathon, r.interests, r.motivations, r.resumeUrl, r.github,
+      r.conduct, r.signature, r.teamStatus, r.tshirt,
+      r.dietary, r.referral, r.goals, r.additionalInfo,
+      statusTone(r.signup).label, r.cert ?? "",
     ]);
     const csv = [header, ...body]
       .map((line) => line.map((cell) => csvCell(String(cell))).join(",")) // SECURITY — see csvCell
@@ -756,7 +827,7 @@ const AdminDashboard = () => {
   ];
 
   const lensCards = [
-    { key: "signups" as Lens, title: "Signups",      count: plural(stats.awaiting, "waiting", "waiting"), figure: String(stats.total),    note: "Accept or decline registrations",     fg: C.pink },
+    { key: "signups" as Lens, title: "Applications",      count: plural(stats.awaiting, "waiting", "waiting"), figure: String(stats.total),    note: "Accept or decline applications",     fg: C.pink },
     // PLACEHOLDER — the Teams card's "0 waiting" badge is the number of pending team
     // requests (joins/removals). Hardcoded to 0 until a requests collection exists.
     // Seen: top of the page → "Teams" card → pill in its top-right corner.
@@ -989,7 +1060,7 @@ const AdminDashboard = () => {
                             />
                           </th>
                           <th style={thStyle}>HACKER</th>
-                          <th style={{ ...thStyle, opacity: dim("signups") }}>SIGNUP</th>
+                          <th style={{ ...thStyle, opacity: dim("signups") }}>APPLICATION</th>
                           <th style={{ ...thStyle, opacity: dim("teams") }}>TEAM</th>
                           <th style={{ ...thStyle, opacity: dim("certs") }}>CERTIFICATE</th>
                         </tr>
@@ -1249,7 +1320,7 @@ const AdminDashboard = () => {
                   </div>
 
                   <div style={{ padding: "6px 20px 16px" }}>
-                    <DetailRow label="Signup">
+                    <DetailRow label="Application">
                       <Pill label={person ? personStatus.label : "—"} bg={personStatus.bg} fg={personStatus.fg} />
                     </DetailRow>
                     <DetailRow label="Email">
@@ -1261,9 +1332,40 @@ const AdminDashboard = () => {
                           })()
                         : "—"}
                     </DetailRow>
+                    <DetailRow label="Phone">{person?.phone || "—"}</DetailRow>
+                    <DetailRow label="Age range">{person?.ageRange || "—"}</DetailRow>
+                    <DetailRow label="Gender">{person?.gender || "—"}</DetailRow>
+                    <DetailRow label="Ethnicity">{person?.ethnicity || "—"}</DetailRow>
                     <DetailRow label="Institution">
                       {person ? person.school : "—"}
                     </DetailRow>
+                    <DetailRow label="Standing">{person?.standing || "—"}</DetailRow>
+                    {person?.highSchoolCase && (
+                      <DetailRow label="HS statement">{person.highSchoolCase}</DetailRow>
+                    )}
+                    <DetailRow label="Major">{person?.major || "—"}</DetailRow>
+                    <DetailRow label="First hackathon">{person?.firstHackathon || "—"}</DetailRow>
+                    <DetailRow label="Interests">{person?.interests || "—"}</DetailRow>
+                    <DetailRow label="Motivations">{person?.motivations || "—"}</DetailRow>
+                    <DetailRow label="Résumé">
+                      {/* SECURITY — only link values that are plain https URLs. */}
+                      {person && isHttpsUrl(person.resumeUrl)
+                        ? <a href={person.resumeUrl} target="_blank" rel="noopener noreferrer">{person.resumeName || "View résumé"}</a>
+                        : "—"}
+                    </DetailRow>
+                    <DetailRow label="GitHub">
+                      {person && isHttpsUrl(person.github)
+                        ? <a href={person.github} target="_blank" rel="noopener noreferrer">{person.github}</a>
+                        : person?.github || "—"}
+                    </DetailRow>
+                    <DetailRow label="Team status">{person?.teamStatus || "—"}</DetailRow>
+                    <DetailRow label="T-shirt">{person?.tshirt || "—"}</DetailRow>
+                    <DetailRow label="Dietary">{person?.dietary || "—"}</DetailRow>
+                    <DetailRow label="Heard via">{person?.referral || "—"}</DetailRow>
+                    <DetailRow label="Goals">{person?.goals || "—"}</DetailRow>
+                    <DetailRow label="Other notes">{person?.additionalInfo || "—"}</DetailRow>
+                    <DetailRow label="Conduct">{person?.conduct || "—"}</DetailRow>
+                    <DetailRow label="Consent">{person?.signature ? `Signed: ${person.signature}` : "—"}</DetailRow>
                     <DetailRow label="Certificate">
                       <span style={{ color: person?.cert ? C.ink : C.ink35 }}>
                         {person ? person.cert ?? "None issued" : "—"}
@@ -1362,7 +1464,7 @@ const AdminDashboard = () => {
               {isSignups && (
                 <div style={cardStyle}>
                   <div style={cardHeadStyle}>
-                    <h2 style={headingStyle}>Where signups stand</h2>
+                    <h2 style={headingStyle}>Where applications stand</h2>
                   </div>
                   <div style={{ padding: "6px 20px 16px" }}>
                     <DetailRow label="Awaiting">

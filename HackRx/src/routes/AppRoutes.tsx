@@ -8,6 +8,7 @@ import AdminDashboard from "@/pages/AdminDashboard";
 import AdminAccount from "@/pages/AdminAccount";
 import SignupPage from "@/pages/SignupPage";
 import TeamPlanning from "@/pages/TeamPlanning";
+import ApplicationForm from "@/pages/ApplicationForm";
 import { useAuth } from "@/context/auth-context";
 import { useAdmin } from "@/hooks/useAdmin";
 
@@ -37,7 +38,8 @@ export const AppRoutes = () => (
 
     <Route path="/" element={<Home />} />
 
-    <Route path="/signup" element={<SignupPage />} />
+    <Route path="/apply" element={<SignupPage />} />
+    <Route path="/signup" element={<Navigate to="/apply" replace />} />
 
     <Route
       path="/dashboard"
@@ -80,6 +82,13 @@ export const AppRoutes = () => (
         <Protected>
           <TeamPlanning />
         </Protected>
+      }
+    />
+
+    <Route
+      path="/application-form"
+      element={
+        <ApplicationForm />
       }
     />
 

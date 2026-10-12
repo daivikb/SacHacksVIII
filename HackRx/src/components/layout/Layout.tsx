@@ -219,8 +219,8 @@ export const Nav = () => {
 /* ============================== portal nav =============================== */
 
 const PORTAL_LINKS = [
-  { to: "/", label: "Home" },
   { to: "/dashboard", label: "Dashboard" },
+  { to: "/teams", label: "Teams" },
   { to: "/account", label: "Account" },
 ];
 
