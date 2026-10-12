@@ -234,7 +234,7 @@ export const PortalNav = () => {
     ? [
       { to: "/", label: "Home" },
       { to: "/admin", label: "Dashboard" },
-      { to: "/account", label: "Account" },
+      { to: "/admin/account", label: "Account" },
     ]
     : PORTAL_LINKS;
 

@@ -11,14 +11,13 @@ import {
   doc,
   getDoc,
   getDocs,
-  orderBy,
-  query,
   serverTimestamp,
   updateDoc,
   addDoc,
 } from "firebase/firestore";
 
 import {
+  auth,
   db,
 } from "@/integrations/firebase/client";
 
@@ -109,6 +108,30 @@ export async function isAdmin(userId: string): Promise<boolean> {
   }
 }
 
+/** Firestore Timestamp (or anything else) -> millis, for newest-first sorting. */
+function toMillis(value: unknown): number {
+  const ts = value as { toMillis?: () => number } | null | undefined;
+  return typeof ts?.toMillis === "function" ? ts.toMillis() : 0;
+}
+
+/**
+ * Reads a whole collection, newest first.
+ *
+ * Sorting happens here rather than with a Firestore `orderBy`, because
+ * `orderBy` silently drops every document that is missing the sort field.
+ */
+async function readCollection<T extends { id: string }>(
+  name: string,
+  sortField: string,
+): Promise<T[]> {
+  const snapshot = await getDocs(collection(db, name));
+  const rows = snapshot.docs.map((entry) => ({
+    id: entry.id,
+    ...entry.data(),
+  })) as unknown as (T & Record<string, unknown>)[];
+  return rows.sort((x, y) => toMillis(y[sortField]) - toMillis(x[sortField]));
+}
+
 /**
  * Fetches all datasets displayed by the admin workspace.
  *
@@ -119,99 +142,62 @@ export async function isAdmin(userId: string): Promise<boolean> {
  * demos
  * users
  * certifications
+ *
+ * Each collection is read independently, so one that is empty, missing or
+ * denied by Security Rules does not hide the others. `error` describes
+ * whatever could not be loaded; `data` always holds what could.
  */
 export async function fetchAdminWorkspace(): Promise<{
-  data: AdminWorkspace | null;
+  data: AdminWorkspace;
   error: string | null;
 }> {
-  try {
-    const [
-      applicationsSnapshot,
-      teamsSnapshot,
-      demosSnapshot,
-      membersSnapshot,
-      certificationsSnapshot,
-    ] = await Promise.all([
-      getDocs(
-        query(
-          collection(db, "applications"),
-          orderBy("created_at", "desc"),
-        ),
-      ),
+  const sources = [
+    ["applications", "created_at"],
+    ["teams", "formed_at"],
+    ["demos", "created_at"],
+    ["users", "created_at"],
+    ["certifications", "issued_at"],
+  ] as const;
 
-      getDocs(
-        query(
-          collection(db, "teams"),
-          orderBy("formed_at", "desc"),
-        ),
-      ),
+  const results = await Promise.allSettled(
+    sources.map(([name, sortField]) =>
+      readCollection<{ id: string }>(name, sortField),
+    ),
+  );
 
-      getDocs(
-        query(
-          collection(db, "demos"),
-          orderBy("created_at", "desc"),
-        ),
-      ),
+  const rows = results.map((r) => (r.status === "fulfilled" ? r.value : []));
+  const failed = sources
+    .filter((_, i) => results[i].status === "rejected")
+    .map(([name]) => name);
 
-      getDocs(
-        query(
-          collection(db, "users"),
-          orderBy("created_at", "desc"),
-        ),
-      ),
-
-      getDocs(
-        query(
-          collection(db, "certifications"),
-          orderBy("issued_at", "desc"),
-        ),
-      ),
-    ]);
-
-    const applications = applicationsSnapshot.docs.map((entry) => ({
-      id: entry.id,
-      ...entry.data(),
-    })) as Application[];
-
-    const teams = teamsSnapshot.docs.map((entry) => ({
-      id: entry.id,
-      ...entry.data(),
-    })) as Team[];
-
-    const demos = demosSnapshot.docs.map((entry) => ({
-      id: entry.id,
-      ...entry.data(),
-    })) as Demo[];
-
-    const members = membersSnapshot.docs.map((entry) => ({
-      id: entry.id,
-      ...entry.data(),
-    })) as Member[];
-
-    const certifications = certificationsSnapshot.docs.map((entry) => ({
-      id: entry.id,
-      ...entry.data(),
-    })) as Certification[];
-
-    return {
-      data: {
-        applications,
-        teams,
-        demos,
-        members,
-        certifications,
-      },
-      error: null,
-    };
-  } catch (error) {
-    return {
-      data: null,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Unable to load admin workspace",
-    };
+  let error: string | null = null;
+  if (failed.length) {
+    const denied = results.some(
+      (r) =>
+        r.status === "rejected" &&
+        (r.reason as { code?: string } | null)?.code === "permission-denied",
+    );
+    if (denied && !auth.currentUser) {
+      error =
+        "Firestore refused the request because no Firebase account is signed in. " +
+        "Log in with a Firebase account that has the admin role to see participants.";
+    } else if (denied) {
+      error = `This account isn't allowed to read: ${failed.join(", ")}. Check its admin role and the Firestore rules.`;
+    } else {
+      error = `Unable to load: ${failed.join(", ")}.`;
+    }
   }
+
+  return {
+    data: {
+      applications: rows[0] as Application[],
+      teams: rows[1] as Team[],
+      demos: rows[2] as Demo[],
+      members: rows[3] as Member[],
+      certifications: rows[4] as Certification[],
+    },
+    error,
+  };
 }
 
 /**
