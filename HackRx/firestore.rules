@@ -1,282 +1,386 @@
 rules_version = '2';
 
-// HackRx Firestore rules.
+// HackRx Firestore rules. The only collections are `users` and `teams`;
+// everything else is denied.
 //
-// users/{uid}             one per account, created at sign-up
-//   admin      true for organisers. Granted only from the Firebase console or
-//              the Admin SDK (both bypass these rules); no client can set it.
-//   user_id    the account's uid
-//   email      the account's sign-in email (the admin roster matches
-//              applications to people by email, so it can't be spoofed)
-//   team_id    the team they're on, or null. Having one is what marks a
-//              participant as ACCEPTED in the app, so only admins can give a
-//              user their first team_id or take it away. Accepted users can
-//              switch between teams themselves.
-//   application  added once from /apply: every answer, status ("pending" |
-//              "approved" | "rejected"), created_at, and reviewed_by /
-//              reviewed_at once an admin decides. Applicants can't edit it
-//              after submitting; admins can only change the review fields.
-//   certifications  list of certificates issued to the user ({ title,
-//              certificate_code, issued_by, issued_at }). Admin-only.
-//   invitations  list of team ids that have invited this user. A member of
-//              a team may add that team's id here while adding the user to
-//              the team's `pending` in the same batch.
+// users/{uid}
+//   user_id      the account's uid (== doc id)
+//   email        the account's sign-in email
+//   admin        false for everyone; set to true only from the console/Admin SDK
+//   app_id       set once, when the user submits their application
+//   application  the submitted answers + status / reviewed_by / reviewed_at
+//   team_id      null until an admin accepts the application. Once set, it
+//                always points at a team that lists the user in `members`.
+//   invitations  ids of teams that have invited this user
 //
 // teams/{teamId}
-//   team_id    same as the document id
-//   owner      uid of the party owner
-//   members    list of member uids, at most 4
-//   pending    list of invited uids. Members + pending can't exceed 3.
-//   autofill   whether open spots get filled with random hackers
+//   team_id      == doc id
+//   owner        uid of the owner (always one of `members`)
+//   members      uids on the team, owner included
+//   pending      uids invited but not joined yet
+//   autofill     owner's autofill toggle
 //
-// Only `users` and `teams` exist. A user is ACCEPTED once users.team_id is set.
+// Membership is stored on both sides (users.team_id <-> teams.members, and
+// users.invitations <-> teams.pending), so every flow writes both docs in one
+// batch/transaction and each side checks the other with getAfter().
 //
-// Team membership is stored on both sides (users.team_id and teams.members)
-// and must always agree, so joining, leaving or switching teams has to update
-// both documents in one writeBatch. A write that changes only one side is
-// rejected.
+//   sign up        user creates own doc: user_id, email, admin=false
+//   apply          user sets app_id + application once (status "pending")
+//   accept (admin) admin sets team_id and creates a solo team owned by the user
+//   invite         owner adds uid to pending + teamId to that user's invitations
+//                  (invitee must be accepted, team can't exceed MAX_TEAM_SIZE)
+//   cancel invite  owner removes uid from pending + teamId from their invitations
+//   decline        invitee removes self from pending + teamId from invitations
+//   accept invite  invitee leaves old team (deleted if last member, ownership
+//                  passes to the first remaining member if they owned it),
+//                  moves pending -> members, sets team_id, drops the invitation
+//   leave          member leaves into a new solo team they own
+//   remove member  owner moves the member into a new solo team they own
+//   autofill       owner only
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // ---- helpers ------------------------------------------------------------
 
+    function maxTeamSize() {
+      return 3; // members + pending, owner included. Keep in sync with MAX_TEAM_SIZE in team.service.ts
+    }
+
     function signedIn() {
       return request.auth != null;
     }
 
-    function isSelf(uid) {
-      return signedIn() && request.auth.uid == uid;
+    function me() {
+      return request.auth.uid;
     }
 
     function userPath(uid) {
       return /databases/$(database)/documents/users/$(uid);
     }
 
-    function teamPath(teamId) {
-      return /databases/$(database)/documents/teams/$(teamId);
+    function teamPath(id) {
+      return /databases/$(database)/documents/teams/$(id);
+    }
+
+    function listOr(value) {
+      return value is list ? value : [];
+    }
+
+    function userBefore(uid) {
+      return get(userPath(uid)).data;
+    }
+
+    function userAfter(uid) {
+      return getAfter(userPath(uid)).data;
+    }
+
+    function teamAfter(id) {
+      return getAfter(teamPath(id)).data;
     }
 
     function isAdmin() {
-      return signedIn() && get(userPath(request.auth.uid)).data.get('admin', false) == true;
+      return signedIn() && userBefore(me()).get('admin', false) == true;
     }
 
-    function tokenEmail() {
-      return request.auth.token.get('email', null);
+    function myTeamId() {
+      return userBefore(me()).get('team_id', null);
     }
 
     function changedKeys() {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
 
-    // The team this user's document will point at once the whole write lands.
-    function teamIdAfterWrite(uid) {
-      return getAfter(userPath(uid)).data.get('team_id', null);
+    // `after` is `before` plus exactly `x`.
+    function addedOne(before, after, x) {
+      return !(x in before)
+        && after.size() == before.size() + 1
+        && after.toSet() == before.toSet().union([x].toSet());
     }
 
-    // A user may only move from one team to another (team_id is the
-    // acceptance marker, so null -> team and team -> null are admin-only).
-    // The old team must no longer list them (or be deleted) and the new team
-    // must list them.
-    function teamChangeIsConsistent(uid) {
-      let before = resource.data.get('team_id', null);
-      let after = request.resource.data.get('team_id', null);
-      return before == after || (
-        before != null
-        && after != null
-        && (!existsAfter(teamPath(before))
-            || !(uid in getAfter(teamPath(before)).data.members))
-        && uid in getAfter(teamPath(after)).data.members
-      );
-    }
-
-    // A list field, or [] when it's missing or null.
-    function listOr(value) {
-      return value is list ? value : [];
-    }
-
-    // The caller's own team_id, or null if they haven't been accepted.
-    function myTeamId() {
-      return get(userPath(request.auth.uid)).data.get('team_id', null);
-    }
-
-    function callerAccepted() {
-      return signedIn() && myTeamId() != null;
-    }
-
-    // `uid` is a member or pending invitee of the caller's team.
-    function onMyTeam(uid) {
-      let myTeam = myTeamId();
-      return myTeam != null
-        && exists(teamPath(myTeam))
-        && (uid in listOr(get(teamPath(myTeam)).data.get('members', null))
-            || uid in listOr(get(teamPath(myTeam)).data.get('pending', null)));
-    }
-
-    // The user in `data` is on a team that has invited the caller.
-    function onTeamThatInvitedMe(data) {
-      let theirTeam = data.get('team_id', null);
-      return theirTeam != null
-        && theirTeam in listOr(get(userPath(request.auth.uid)).data.get('invitations', null));
-    }
-
-    // Lets the Teams page show the emails of your teammates, the people you've
-    // invited, and the teams that invited you.
-    function knowsUser(uid, data) {
-      return signedIn() && (onMyTeam(uid) || onTeamThatInvitedMe(data));
-    }
-
-    // Someone on the caller's team is adding that team's id to this user's
-    // `invitations`, and the team's `pending` lists this user after the write.
-    function beingInvited(uid) {
-      let teamId = get(userPath(request.auth.uid)).data.get('team_id', null);
-      let before = listOr(resource.data.get('invitations', null));
-      let after = listOr(request.resource.data.get('invitations', null));
-      return signedIn()
-        && !isSelf(uid)
-        && teamId is string
-        && changedKeys().hasOnly(['invitations'])
-        && teamId in after
-        && after.removeAll([teamId]).toSet() == before.removeAll([teamId]).toSet()
-        && uid in listOr(getAfter(teamPath(teamId)).data.get('pending', null));
-    }
-
-    function hasApplication(data) {
-      return data.get('application', null) != null;
-    }
-
-    // Applicant: `application` can be added once, as pending, and never edited.
-    function applicationSubmitIsValid() {
-      return !changedKeys().hasAny(['application'])
-        || (!hasApplication(resource.data)
-            && request.resource.data.application.status == 'pending'
-            && request.resource.data.application.created_at == request.time
-            && !request.resource.data.application.keys().hasAny(['reviewed_by', 'reviewed_at']));
-    }
-
-    // Admin: may only change the review fields of an existing application.
-    function applicationReviewIsValid() {
-      return !changedKeys().hasAny(['application'])
-        || (hasApplication(resource.data)
-            && request.resource.data.application.diff(resource.data.application)
-                 .affectedKeys().hasOnly(['status', 'reviewed_by', 'reviewed_at'])
-            && request.resource.data.application.status in ['pending', 'approved', 'rejected']
-            && request.resource.data.application.reviewed_by == request.auth.uid);
-    }
-
-    // email can only be set to the address the user actually signs in with.
-    function emailIsOwn() {
-      return !changedKeys().hasAny(['email'])
-        || request.resource.data.email == tokenEmail();
+    // `after` is `before` minus `x` (which was in it), order kept.
+    function removedOne(before, after, x) {
+      return x in before && after == before.removeAll([x]);
     }
 
     // ---- users --------------------------------------------------------------
     match /users/{uid} {
-      allow get: if isSelf(uid) || isAdmin() || knowsUser(uid, resource.data);
 
-      // Invite lookup: an accepted user may query users by email, one doc at
-      // a time (the app checks the result has a team_id). Admins can list all.
-      allow list: if isAdmin()
-        || (callerAccepted() && request.query.limit <= 1);
+      // Teammates, people you invited, and owners of teams that invited you.
+      function knowsUser() {
+        let myTeam = myTeamId();
+        let theirTeam = resource.data.get('team_id', null);
+        return (myTeam != null
+                && exists(teamPath(myTeam))
+                && (uid in listOr(get(teamPath(myTeam)).data.get('members', null))
+                    || uid in listOr(get(teamPath(myTeam)).data.get('pending', null))))
+          || (theirTeam != null
+              && theirTeam in listOr(userBefore(me()).get('invitations', null)));
+      }
 
-      // Sign-up (email or Google): a non-admin profile for your own uid, with
-      // your own email, no application and no team yet.
-      allow create: if isSelf(uid)
-        && request.resource.data.get('admin', false) == false
+      // -- the user editing their own doc --
+
+      function emailOk() {
+        return !changedKeys().hasAny(['email'])
+          || request.resource.data.email == request.auth.token.email;
+      }
+
+      // app_id + application are written together, once, as "pending".
+      function applicationSubmitOk() {
+        let nxt = request.resource.data;
+        return !changedKeys().hasAny(['app_id', 'application'])
+          || (resource.data.get('app_id', null) == null
+              && resource.data.get('application', null) == null
+              && nxt.app_id is string
+              && nxt.app_id.size() > 0
+              && nxt.application is map
+              && nxt.application.status == 'pending'
+              && nxt.application.created_at == request.time
+              && !nxt.application.keys().hasAny(['reviewed_by', 'reviewed_at']));
+      }
+
+      // Users may only drop teams from their own invitations (decline/accept).
+      function invitationsOnlyShrink() {
+        return !changedKeys().hasAny(['invitations'])
+          || listOr(request.resource.data.get('invitations', null)).toSet()
+               .difference(listOr(resource.data.get('invitations', null)).toSet())
+               .size() == 0;
+      }
+
+      // Accepted users may move between teams (accept invite / leave). The old
+      // team must no longer list them (or be gone) and the new one must.
+      // null -> team and team -> null are admin-only (that's acceptance).
+      function teamMoveOk() {
+        let before = resource.data.get('team_id', null);
+        let after = request.resource.data.get('team_id', null);
+        return !changedKeys().hasAny(['team_id'])
+          || (before != null
+              && after is string
+              && after != before
+              && (!existsAfter(teamPath(before))
+                  || !(uid in listOr(teamAfter(before).get('members', null))))
+              && existsAfter(teamPath(after))
+              && uid in listOr(teamAfter(after).get('members', null)));
+      }
+
+      function selfUpdateOk() {
+        return uid == me()
+          && changedKeys().hasOnly([
+               'full_name', 'username', 'updated_at', 'email',
+               'app_id', 'application', 'team_id', 'invitations'])
+          && emailOk()
+          && applicationSubmitOk()
+          && invitationsOnlyShrink()
+          && teamMoveOk();
+      }
+
+      // -- the owner of the user's team removing them --
+      // The removed member lands in a new solo team they own.
+      function removedByOwner() {
+        let oldTeam = resource.data.get('team_id', null);
+        let newTeam = request.resource.data.get('team_id', null);
+        return uid != me()
+          && changedKeys().hasOnly(['team_id'])
+          && oldTeam != null
+          && newTeam is string
+          && newTeam != oldTeam
+          && exists(teamPath(oldTeam))
+          && get(teamPath(oldTeam)).data.owner == me()
+          && existsAfter(teamPath(oldTeam))
+          && !(uid in listOr(teamAfter(oldTeam).get('members', null)))
+          && existsAfter(teamPath(newTeam))
+          && teamAfter(newTeam).owner == uid
+          && teamAfter(newTeam).members == [uid];
+      }
+
+      // -- a team owner inviting this user, or cancelling that invite --
+      function invitationChangedByOwner() {
+        let teamId = myTeamId();
+        let before = listOr(resource.data.get('invitations', null));
+        let after = listOr(request.resource.data.get('invitations', null));
+        return uid != me()
+          && teamId != null
+          && changedKeys().hasOnly(['invitations'])
+          && exists(teamPath(teamId))
+          && get(teamPath(teamId)).data.owner == me()
+          && (
+            // invite: only accepted users, and the team's pending lists them
+            (resource.data.get('team_id', null) != null
+              && after.toSet() == before.toSet().union([teamId].toSet())
+              && after.size() <= before.size() + 1
+              && uid in listOr(teamAfter(teamId).get('pending', null)))
+            // cancel: the team's pending no longer lists them
+            || (after == before.removeAll([teamId])
+              && !(uid in listOr(teamAfter(teamId).get('pending', null))))
+          );
+      }
+
+      // -- admins: review fields of an application, plus team_id etc. --
+      function applicationReviewOk() {
+        return !changedKeys().hasAny(['application'])
+          || (resource.data.get('application', null) != null
+              && request.resource.data.application.diff(resource.data.application)
+                   .affectedKeys().hasOnly(['status', 'reviewed_by', 'reviewed_at'])
+              && request.resource.data.application.status in ['pending', 'approved', 'rejected']
+              && request.resource.data.application.reviewed_by == me());
+      }
+
+      allow get: if signedIn() && (uid == me() || knowsUser() || isAdmin());
+
+      // Invite lookup by email (one doc at a time) for accepted users; admins list all.
+      allow list: if signedIn()
+        && (isAdmin() || (myTeamId() != null && request.query.limit <= 1));
+
+      // Sign-up: your own doc with user_id, email and admin=false.
+      allow create: if signedIn()
+        && uid == me()
+        && request.resource.data.keys().hasAll(['user_id', 'email', 'admin'])
+        && request.resource.data.keys().hasOnly(['user_id', 'email', 'admin', 'team_id', 'app_id', 'invitations'])
         && request.resource.data.user_id == uid
-        && request.resource.data.get('email', null) == tokenEmail()
-        && !hasApplication(request.resource.data)
-        && !('certifications' in request.resource.data)
-        && request.resource.data.get('team_id', null) == null;
+        && request.resource.data.admin == false
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.get('team_id', null) == null
+        && request.resource.data.get('app_id', null) == null
+        && listOr(request.resource.data.get('invitations', null)).size() == 0;
 
-      // Users can add or change their own fields (profile, their application,
-      // ...) within the checks above. Nobody can change `admin` or `user_id`
-      // from the app, and nobody can award themselves a certificate. Admins
-      // can edit other fields on anyone, but only the review fields of an
-      // application.
-      allow update: if !changedKeys().hasAny(['admin', 'user_id'])
-        && ((isSelf(uid)
-              && !changedKeys().hasAny(['certifications'])
-              && emailIsOwn()
-              && applicationSubmitIsValid()
-              && teamChangeIsConsistent(uid))
-            || (isAdmin() && applicationReviewIsValid())
-            || beingInvited(uid));
+      allow update: if signedIn()
+        && !changedKeys().hasAny(['admin', 'user_id'])
+        && (selfUpdateOk()
+            || removedByOwner()
+            || invitationChangedByOwner()
+            || (isAdmin() && applicationReviewOk()));
 
       allow delete: if false;
     }
 
     // ---- teams --------------------------------------------------------------
     match /teams/{teamId} {
-      // Adds exactly the caller to `members`, within the size cap, and the
-      // caller's user doc points at this team after the write.
-      function joining() {
-        let before = resource.data.members;
-        let after = request.resource.data.members;
-        return signedIn()
-          && changedKeys().hasOnly(['members'])
-          && !(request.auth.uid in before)
-          && after.size() == before.size() + 1
-          && after.toSet() == before.toSet().union([request.auth.uid].toSet())
-          && after.size() <= 4
-          && teamIdAfterWrite(request.auth.uid) == teamId;
+
+      function teamMembers() {
+        return listOr(resource.data.get('members', null));
       }
 
-      // Removes exactly the caller from `members`, and the caller's user doc
-      // no longer points at this team after the write.
-      function leaving() {
-        let before = resource.data.members;
-        let after = request.resource.data.members;
-        return signedIn()
-          && changedKeys().hasOnly(['members'])
-          && request.auth.uid in before
-          && after.size() == before.size() - 1
-          && after.toSet() == before.toSet().difference([request.auth.uid].toSet())
-          && teamIdAfterWrite(request.auth.uid) != teamId;
+      function teamPending() {
+        return listOr(resource.data.get('pending', null));
       }
 
-      // A member adds exactly one accepted user (not already on the team) to
-      // `pending`, keeping members + pending at 3 or fewer, and that user's
-      // `invitations` lists this team after the write.
+      function nextMembers() {
+        return listOr(request.resource.data.get('members', null));
+      }
+
+      function nextPending() {
+        return listOr(request.resource.data.get('pending', null));
+      }
+
+      function isOwner() {
+        return resource.data.get('owner', null) == me();
+      }
+
+      function togglingAutofill() {
+        return isOwner()
+          && changedKeys().hasOnly(['autofill'])
+          && request.resource.data.autofill is bool;
+      }
+
+      // Owner adds one accepted user to pending; that user's invitations
+      // list this team after the write.
       function inviting() {
-        let before = listOr(resource.data.get('pending', null));
-        let after = listOr(request.resource.data.get('pending', null));
-        let added = after.removeAll(before);
-        return signedIn()
-          && request.auth.uid in resource.data.members
+        let added = nextPending().removeAll(teamPending());
+        return isOwner()
           && changedKeys().hasOnly(['pending'])
           && added.size() == 1
-          && after.size() == before.size() + 1
-          && !(added[0] in resource.data.members)
-          && resource.data.members.size() + after.size() <= 3
-          && getAfter(userPath(added[0])).data.get('team_id', null) != null
-          && teamId in listOr(getAfter(userPath(added[0])).data.get('invitations', null));
+          && addedOne(teamPending(), nextPending(), added[0])
+          && !(added[0] in teamMembers())
+          && teamMembers().size() + nextPending().size() <= maxTeamSize()
+          && existsAfter(userPath(added[0]))
+          && userAfter(added[0]).get('team_id', null) != null
+          && teamId in listOr(userAfter(added[0]).get('invitations', null));
       }
 
-      // Signed-in users can see teams (to view teammates and pick one to join).
+      // Owner withdraws one invite; that user's invitations no longer list this team.
+      function cancellingInvite() {
+        let removed = teamPending().removeAll(nextPending());
+        return isOwner()
+          && changedKeys().hasOnly(['pending'])
+          && removed.size() == 1
+          && removedOne(teamPending(), nextPending(), removed[0])
+          && !(teamId in listOr(userAfter(removed[0]).get('invitations', null)));
+      }
+
+      // Invitee declines: off pending, and off their own invitations.
+      function declining() {
+        return changedKeys().hasOnly(['pending'])
+          && removedOne(teamPending(), nextPending(), me())
+          && !(teamId in listOr(userAfter(me()).get('invitations', null)));
+      }
+
+      // Invitee accepts: pending -> members, and their team_id points here.
+      function joining() {
+        return changedKeys().hasOnly(['pending', 'members'])
+          && removedOne(teamPending(), nextPending(), me())
+          && addedOne(teamMembers(), nextMembers(), me())
+          && userAfter(me()).get('team_id', null) == teamId;
+      }
+
+      // A member leaves a team that still has others on it. If they owned
+      // it, the first remaining member becomes owner.
+      function leaving() {
+        let after = nextMembers();
+        return teamMembers().size() > 1
+          && changedKeys().hasOnly(['members', 'owner'])
+          && removedOne(teamMembers(), after, me())
+          && ((isOwner() && request.resource.data.owner == after[0])
+              || (!isOwner() && request.resource.data.owner == resource.data.owner))
+          && userAfter(me()).get('team_id', null) != teamId;
+      }
+
+      // Owner removes one other member; that member's team_id moves away
+      // (their users rule checks it moves to a new solo team).
+      function removingMember() {
+        let removed = teamMembers().removeAll(nextMembers());
+        return isOwner()
+          && changedKeys().hasOnly(['members'])
+          && removed.size() == 1
+          && removed[0] != me()
+          && removedOne(teamMembers(), nextMembers(), removed[0])
+          && userAfter(removed[0]).get('team_id', null) != teamId;
+      }
+
       allow read: if signedIn();
 
-      // Start a team: you are its owner and only member, nobody is pending
-      // yet, and your user doc points at it.
+      // A solo team: owner is the only member, nobody pending, and the owner's
+      // user doc points here after the write. Created when an admin accepts an
+      // application, or when a member leaves / is removed into a team of their own.
       allow create: if signedIn()
-        && request.resource.data.members == [request.auth.uid]
-        && request.resource.data.get('owner', request.auth.uid) == request.auth.uid
-        && listOr(request.resource.data.get('pending', null)).size() == 0
-        && teamIdAfterWrite(request.auth.uid) == teamId;
+        && request.resource.data.keys().hasAll(['team_id', 'owner', 'members', 'pending', 'autofill'])
+        && request.resource.data.keys().hasOnly(['team_id', 'owner', 'members', 'pending', 'autofill'])
+        && request.resource.data.team_id == teamId
+        && request.resource.data.owner is string
+        && request.resource.data.members == [request.resource.data.owner]
+        && request.resource.data.pending == []
+        && request.resource.data.autofill is bool
+        && existsAfter(userPath(request.resource.data.owner))
+        && userAfter(request.resource.data.owner).get('team_id', null) == teamId
+        && (request.resource.data.owner == me()
+            // owner's doc is changing in this batch, so its own rule vouches for it
+            || userBefore(request.resource.data.owner).get('team_id', null) != teamId
+            || isAdmin());
 
-      allow update: if isAdmin() || joining() || leaving() || inviting();
+      allow update: if signedIn()
+        && (togglingAutofill()
+            || inviting()
+            || cancellingInvite()
+            || declining()
+            || joining()
+            || leaving()
+            || removingMember()
+            || isAdmin());
 
-      // The last member may delete the team as they leave it.
-      allow delete: if isAdmin()
-        || (signedIn()
-            && resource.data.members == [request.auth.uid]
-            && teamIdAfterWrite(request.auth.uid) != teamId);
+      // The last member deletes the team as they leave it.
+      allow delete: if signedIn()
+        && ((teamMembers() == [me()] && userAfter(me()).get('team_id', null) != teamId)
+            || isAdmin());
     }
 
-    // ---- admin-only ---------------------------------------------------------
-    match /demos/{id} {
-      allow read: if isAdmin();
-    }
-
-    // Everything else is denied by default.
+    // Everything else (any other collection) is denied by default.
   }
 }

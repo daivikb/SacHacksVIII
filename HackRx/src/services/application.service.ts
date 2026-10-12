@@ -4,12 +4,13 @@
  *
  * Firestore structure — the application lives on the applicant's own profile:
  *
+ * users/{userId}.app_id       id of the application, set when it's submitted
  * users/{userId}.application
  *   status ("pending" | "approved" | "rejected"), created_at,
  *   reviewed_by / reviewed_at (set by an admin), plus every answer from the form
  *
- * firestore.rules only let a user add `application` to their own profile
- * once, with status "pending" — a second submit is refused server-side, and
+ * firestore.rules only let a user add `app_id` + `application` to their own
+ * profile once, with status "pending" — a second submit is refused server-side, and
  * only admins can change it afterwards.
  */
 
@@ -250,7 +251,10 @@ export async function fetchApplicationStatus(userId: string): Promise<Applicatio
   try {
     const snapshot = await getDoc(doc(db, "users", userId));
     const application = snapshot.data()?.application;
-    if (!application || typeof application !== "object") return null;
+    if (!application || typeof application !== "object") {
+      // An app_id without answers still counts as submitted.
+      return snapshot.data()?.app_id ? "pending" : null;
+    }
     const status = (application as { status?: unknown }).status;
     return status === "approved" || status === "rejected" ? status : "pending";
   } catch {
@@ -278,6 +282,8 @@ export async function submitApplication(values: ApplicationValues): Promise<stri
 
   try {
     await updateDoc(doc(db, "users", user.uid), {
+      // Set once, together with the answers; firestore.rules refuse a second submit.
+      app_id: crypto.randomUUID(),
       application: {
         ...answers,
         // The admin roster shows `institution`, so store the school's actual name.

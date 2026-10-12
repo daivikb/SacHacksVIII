@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import {
   GoogleAuthProvider,
+  type User,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
@@ -79,42 +80,41 @@ export interface Profile {
 }
 
 /**
- * Creates a Firebase Authentication account and an initial Firestore profile.
+ * Makes sure the signed-in account has its users/{uid} document:
+ * user_id, email and admin=false (team_id, app_id and invitations start empty
+ * and are filled in by the application / team flows). Safe to call on every
+ * sign-in; it only writes when the document is missing.
+ */
+export async function ensureUserDoc(user: User): Promise<void> {
+  const userRef = doc(db, "users", user.uid);
+  const snapshot = await getDoc(userRef);
+  if (snapshot.exists()) return;
+
+  await setDoc(userRef, {
+    user_id: user.uid,
+    email: user.email,
+    admin: false,
+    team_id: null,
+    app_id: null,
+    invitations: [],
+  });
+}
+
+/**
+ * Creates a Firebase Authentication account and its users/{uid} document.
  */
 export async function signUp(values: SignUpValues): Promise<string | null> {
   try {
-    console.log("1. Starting signup");
-
     const credential = await createUserWithEmailAndPassword(
       auth,
       values.email.trim(),
       values.password,
     );
-
-    console.log("2. Auth user created:", credential.user.uid);
-    console.log("3. Firestore project:", db.app.options.projectId);
-
-    const userRef = doc(db, "users", credential.user.uid);
-
-    console.log("4. Attempting Firestore write");
-
-    await setDoc(userRef, {
-      user_id: credential.user.uid,
-      team_id: null,
-      admin: false,
-      email: credential.user.email ?? values.email.trim(),
-      invitations: null,
-    });
-
-    console.log("5. Firestore write completed");
-
-    const snapshot = await getDoc(userRef);
-    console.log("6. Document exists:", snapshot.exists());
-
+    await ensureUserDoc(credential.user);
     return null;
   } catch (error) {
     const e = error as { code?: string; message?: string };
-    console.error("SIGNUP DEBUG ERROR:", e.code, e.message, error);
+    console.error("Sign-up failed:", e.code, e.message, error);
     return e.message ?? "Unable to create your account";
   }
 }
@@ -137,10 +137,16 @@ export async function signIn(values: LoginValues): Promise<string | null> {
   }
 
   try {
-    await signInWithEmailAndPassword(
+    const credential = await signInWithEmailAndPassword(
       auth,
       identifier,
       values.password,
+    );
+
+    // Accounts whose profile write failed at sign-up get it now. A failure
+    // here shouldn't block signing in, so it's only logged.
+    await ensureUserDoc(credential.user).catch((e) =>
+      console.error("Couldn't create the users profile:", e),
     );
 
     return null;
@@ -158,21 +164,9 @@ export async function signInWithGoogle(): Promise<string | null> {
   try {
     const provider = new GoogleAuthProvider();
     const result = await signInWithPopup(auth, provider);
-    const user = result.user;
 
-    const userRef = doc(db, "users", user.uid);
-    const snapshot = await getDoc(userRef);
-
-    // Create the profile only on first Google sign-in
-    if (!snapshot.exists()) {
-      await setDoc(userRef, {
-        user_id: user.uid,
-        team_id: null,
-        admin: false,
-        email: user.email,
-        invitations: null,
-      });
-    }
+    // Create the profile only on first Google sign-in.
+    await ensureUserDoc(result.user);
 
     return null;
   } catch (error) {

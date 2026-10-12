@@ -13,12 +13,9 @@ import {
   doc,
   getDoc,
   getDocs,
-  limit,
-  query,
   runTransaction,
   serverTimestamp,
   updateDoc,
-  where,
 } from "firebase/firestore";
 
 import {
@@ -31,6 +28,15 @@ import {
   signOut,
   type LoginValues,
 } from "@/services/auth.service";
+
+import {
+  TEAMS,
+  USERS,
+  freshTeamCode,
+  idOf,
+  leaveTeamWrites,
+  soloTeam,
+} from "@/services/team.service";
 
 /**
  * These types intentionally remain flexible during the migration.
@@ -95,7 +101,7 @@ export type ApplicationStatus = "approved" | "rejected";
  */
 export async function isAdmin(userId: string): Promise<boolean> {
   try {
-    const snapshot = await getDoc(doc(db, "users", userId));
+    const snapshot = await getDoc(doc(db, USERS, userId));
     return snapshot.exists() && snapshot.data().admin === true;
   } catch {
     return false;
@@ -160,10 +166,10 @@ export async function fetchAdminWorkspace(): Promise<{
   data: AdminWorkspace;
   error: string | null;
 }> {
+  // Only `users` and `teams` exist in Firestore; demos aren't stored yet.
   const sources = [
-    ["teams", "formed_at"],
-    ["demos", "created_at"],
-    ["users", "created_at"],
+    [TEAMS, "formed_at"],
+    [USERS, "created_at"],
   ] as const;
 
   const results = await Promise.allSettled(
@@ -195,7 +201,7 @@ export async function fetchAdminWorkspace(): Promise<{
     }
   }
 
-  const members = rows[2] as Member[];
+  const members = rows[1] as Member[];
 
   // Applications are stored on the applicant's user document. Each one is
   // flattened into its own row, keyed by the applicant's uid, with the
@@ -206,6 +212,7 @@ export async function fetchAdminWorkspace(): Promise<{
       ...(m.application as Record<string, unknown>),
       id: m.id,
       user_id: m.id,
+      app_id: m.app_id ?? null,
       email: m.email,
     }))
     .sort((x, y) => toMillis(y.created_at) - toMillis(x.created_at));
@@ -228,7 +235,7 @@ export async function fetchAdminWorkspace(): Promise<{
     data: {
       applications,
       teams: rows[0] as Team[],
-      demos: rows[1] as Demo[],
+      demos: [],
       members,
       certifications,
     },
@@ -236,37 +243,16 @@ export async function fetchAdminWorkspace(): Promise<{
   };
 }
 
-const TEAM_CODE_LENGTH = 6;
-const TEAM_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
-/** A random 6-character code of capital letters and digits. */
-function randomTeamCode(): string {
-  let code = "";
-  while (code.length < TEAM_CODE_LENGTH) {
-    const [byte] = crypto.getRandomValues(new Uint8Array(1));
-    // 252 is the largest multiple of 36 that fits in a byte; skipping the rest keeps it unbiased.
-    if (byte < 252) code += TEAM_CODE_ALPHABET[byte % TEAM_CODE_ALPHABET.length];
-  }
-  return code;
-}
-
-/** A team code that no user document holds and no team is filed under yet. */
-async function uniqueTeamCode(): Promise<string> {
-  for (;;) {
-    const code = randomTeamCode();
-    const [holders, team] = await Promise.all([
-      getDocs(query(collection(db, "users"), where("team_id", "==", code), limit(1))),
-      getDoc(doc(db, "teams", code)),
-    ]);
-    if (holders.empty && !team.exists()) return code;
-  }
-}
-
 /**
  * Reviews an application.
  *
- * Approving also gives the applicant a unique team code in `team_id`, unless
- * they already have one, and files a team they own under that code. Rejecting takes their team code away again.
+ * Approving accepts the applicant: it creates a new team in `teams` that they
+ * own (members: [them], pending: [], autofill: false) and sets their
+ * `team_id` to it. Someone who already has a team keeps it.
+ *
+ * Rejecting clears their `team_id`. If they were on a team, they come off it
+ * (the team is deleted if they were its last member, and ownership passes to
+ * the first remaining member if they owned it).
  */
 export async function reviewApplication(
   id: string,
@@ -275,34 +261,37 @@ export async function reviewApplication(
 ): Promise<string | null> {
   try {
     // `id` is the applicant's uid; the application is a field on their user doc.
-    const ref = doc(db, "users", id);
+    const ref = doc(db, USERS, id);
     const review = {
       "application.status": status,
       "application.reviewed_by": reviewerId,
       "application.reviewed_at": serverTimestamp(),
     };
 
-    if (status !== "approved") {
-      await updateDoc(ref, { ...review, team_id: null });
-      return null;
-    }
-
-    const code = await uniqueTeamCode();
     await runTransaction(db, async (tx) => {
       const snapshot = await tx.get(ref);
-      // Re-approving must not replace a code the applicant may already have shared.
-      if (snapshot.data()?.team_id) {
+      if (!snapshot.exists()) throw new Error("That applicant's account no longer exists.");
+      const current = idOf(snapshot.data().team_id);
+      const currentTeamRef = current ? doc(db, TEAMS, current) : null;
+      const currentTeam = currentTeamRef ? await tx.get(currentTeamRef) : null;
+
+      if (status !== "approved") {
+        if (currentTeamRef && currentTeam?.exists()) {
+          leaveTeamWrites(tx, id, currentTeamRef, currentTeam.data());
+        }
+        tx.update(ref, { ...review, team_id: null });
+        return;
+      }
+
+      // Re-approving must not replace a team the applicant is already on.
+      if (current && currentTeam?.exists()) {
         tx.update(ref, review);
         return;
       }
-      tx.update(ref, { ...review, team_id: code });
-      tx.set(doc(db, "teams", code), {
-        team_id: code,
-        owner: id,
-        members: null,
-        pending: null,
-        autofill: false,
-      });
+      // A team_id with no team behind it gets its team filed under that id.
+      const teamId = current ?? (await freshTeamCode(tx));
+      tx.set(doc(db, TEAMS, teamId), soloTeam(teamId, id));
+      tx.update(ref, { ...review, team_id: teamId });
     });
 
     return null;
@@ -329,7 +318,7 @@ export async function issueCertification(
       .toUpperCase()}`;
 
     // serverTimestamp() isn't allowed inside arrayUnion, hence the client clock.
-    await updateDoc(doc(db, "users", userId), {
+    await updateDoc(doc(db, USERS, userId), {
       certifications: arrayUnion({
         issued_by: issuedBy,
         title,

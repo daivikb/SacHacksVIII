@@ -1,12 +1,20 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { CircleArrowRight, Crown, Hourglass, Send, TriangleAlert, X } from "lucide-react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { CircleArrowRight, Crown, Hourglass, LogOut, Send, TriangleAlert, X } from "lucide-react";
 import { Layout, Amoeba } from "@/components/layout/Layout";
 import { PortalDecor } from "@/components/layout/PortalDecor";
 import { useAuth } from "@/context/auth-context";
+import { useToast } from "@/hooks/use-toast";
 import {
     MAX_TEAM_SIZE,
+    acceptInvite,
+    cancelInvite,
+    declineInvite,
     fetchTeamPlanning,
+    leaveTeam,
+    removeMember,
     sendInvite,
+    setAutofill as saveAutofill,
+    type ActionResult,
     type IncomingInvite,
     type InviteResult,
     type TeamPerson,
@@ -16,7 +24,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 type Person = TeamPerson;
 
 /** Email when readable, otherwise a short form of the uid. */
-const displayName = (p: Person) => p.email ?? `User ${p.id.slice(0, 8)}…`;
+const displayName = (p: Person) => `${p.email ?? `User ${p.id.slice(0, 8)}…`}${p.self ? " (you)" : ""}`;
 const inviteLabel = (i: IncomingInvite) => i.ownerEmail ?? `Team ${i.teamId}`;
 
 // Shared row + icon-button styles so both lists line up the same way.
@@ -48,28 +56,34 @@ const SectionBox = ({
 );
 
 const AUTOFILL_HINT =
-    "If checked, random hackers will be added to your team until it has 3 members, if it isn't already full.";
+    `If checked, random hackers will be added to your team until it has ${MAX_TEAM_SIZE} members, if it isn't already full.`;
+const AUTOFILL_MEMBER_HINT = `${AUTOFILL_HINT} Only the team owner can change this.`;
 
 const AutofillToggle = ({
     checked,
+    disabled,
     onChange,
 }: {
     checked: boolean;
+    disabled: boolean;
     onChange: (checked: boolean) => void;
 }) => (
     <Tooltip>
         <TooltipTrigger asChild>
-            <label className="flex shrink-0 cursor-pointer select-none items-center gap-2">
+            <label
+                className={`flex shrink-0 select-none items-center gap-2 ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+            >
                 Autofill
                 <input
                     type="checkbox"
-                    className="h-4 w-4 cursor-pointer accent-[var(--sv-cyan)]"
+                    className="h-4 w-4 cursor-pointer accent-[var(--sv-cyan)] disabled:cursor-not-allowed"
                     checked={checked}
+                    disabled={disabled}
                     onChange={(e) => onChange(e.target.checked)}
                     aria-describedby="autofill-hint"
                 />
                 <span id="autofill-hint" className="sr-only">
-                    {AUTOFILL_HINT}
+                    {disabled ? AUTOFILL_MEMBER_HINT : AUTOFILL_HINT}
                 </span>
             </label>
         </TooltipTrigger>
@@ -78,7 +92,7 @@ const AutofillToggle = ({
             align="end"
             className="max-w-[240px] rounded-[3px] border-2 border-black bg-[rgba(20,8,32,.95)] font-sans text-[13px] leading-snug text-[var(--cream)] shadow-[4px_4px_0_rgba(0,0,0,.45)]"
         >
-            {AUTOFILL_HINT}
+            {disabled ? AUTOFILL_MEMBER_HINT : AUTOFILL_HINT}
         </TooltipContent>
     </Tooltip>
 );
@@ -90,20 +104,27 @@ const EmptyNote = ({ children }: { children: React.ReactNode }) => (
 const TeamSection = ({
     people,
     loading,
+    isOwner,
+    busy,
     onRemove,
+    onLeave,
     autofill,
     onAutofillChange,
 }: {
     people: Person[];
     loading: boolean;
-    onRemove: (id: string) => void;
+    /** The signed-in user owns this team: they can remove people and toggle autofill. */
+    isOwner: boolean;
+    busy: boolean;
+    onRemove: (person: Person) => void;
+    onLeave: () => void;
     autofill: boolean;
     onAutofillChange: (checked: boolean) => void;
 }) => (
     <SectionBox
         title="My Team"
         className="flex-1 !h-auto"
-        action={<AutofillToggle checked={autofill} onChange={onAutofillChange} />}
+        action={<AutofillToggle checked={autofill} disabled={!isOwner || busy} onChange={onAutofillChange} />}
     >
         {loading ? (
             <EmptyNote>Loading your team…</EmptyNote>
@@ -132,16 +153,31 @@ const TeamSection = ({
                             <span className={`${iconBtnClass} text-[var(--sv-yellow)]`} title="Owner">
                                 <Crown className="h-5 w-5" aria-label="Owner" />
                             </span>
-                        ) : (
+                        ) : isOwner ? (
                             <button
                                 type="button"
-                                className={removeBtnClass}
+                                className={`${removeBtnClass} disabled:cursor-not-allowed disabled:opacity-40`}
+                                disabled={busy}
                                 title={person.pending ? "Cancel invitation" : "Remove member"}
                                 aria-label={`${person.pending ? "Cancel invitation for" : "Remove"} ${displayName(person)}`}
-                                onClick={() => onRemove(person.id)}
+                                onClick={() => onRemove(person)}
                             >
                                 <X className="h-5 w-5" strokeWidth={3} />
                             </button>
+                        ) : person.self ? (
+                            // Members can only leave.
+                            <button
+                                type="button"
+                                className={`${removeBtnClass} disabled:cursor-not-allowed disabled:opacity-40`}
+                                disabled={busy}
+                                title="Leave team"
+                                aria-label="Leave team"
+                                onClick={onLeave}
+                            >
+                                <LogOut className="h-5 w-5" />
+                            </button>
+                        ) : (
+                            <span className={iconBtnClass} aria-hidden="true" />
                         )}
                     </li>
                 ))}
@@ -253,11 +289,13 @@ const SendInviteSection = ({
 const InviteSection = ({
     invites,
     loading,
+    busy,
     onDecline,
     onJoin,
 }: {
     invites: IncomingInvite[];
     loading: boolean;
+    busy: boolean;
     onDecline: (teamId: string) => void;
     onJoin: (teamId: string) => void;
 }) => (
@@ -276,7 +314,8 @@ const InviteSection = ({
                         <span className="flex shrink-0 items-center gap-1">
                             <button
                                 type="button"
-                                className={removeBtnClass}
+                                className={`${removeBtnClass} disabled:cursor-not-allowed disabled:opacity-40`}
+                                disabled={busy}
                                 title="Decline invite"
                                 aria-label={`Decline invite from ${inviteLabel(invite)}`}
                                 onClick={() => onDecline(invite.teamId)}
@@ -285,7 +324,8 @@ const InviteSection = ({
                             </button>
                             <button
                                 type="button"
-                                className={joinBtnClass}
+                                className={`${joinBtnClass} disabled:cursor-not-allowed disabled:opacity-40`}
+                                disabled={busy}
                                 title="Leave current team and join"
                                 aria-label={`Leave current team and join ${inviteLabel(invite)}`}
                                 onClick={() => onJoin(invite.teamId)}
@@ -302,55 +342,89 @@ const InviteSection = ({
 
 const TeamPlanning = () => {
     const { user } = useAuth();
+    const { toast } = useToast();
 
     // Pulled from users/{uid} (team_id, invitations) and teams/{id} (owner, members, pending, autofill).
     // Owner at top, followed by any pending, then members.
     const [people, setPeople] = useState<Person[]>([]);
     const [invites, setInvites] = useState<IncomingInvite[]>([]);
     const [teamId, setTeamId] = useState<string | null>(null);
+    const [isOwner, setIsOwner] = useState(false);
     const [autofill, setAutofill] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [busy, setBusy] = useState(false);
+
+    const reload = useCallback(async () => {
+        if (!user) return;
+        const data = await fetchTeamPlanning(user.uid);
+        setTeamId(data?.teamId ?? null);
+        setIsOwner(data?.isOwner ?? false);
+        setPeople(data?.people ?? []);
+        setInvites(data?.invites ?? []);
+        setAutofill(data?.autofill ?? false);
+        setLoading(false);
+    }, [user]);
 
     useEffect(() => {
-        if (!user) return;
-        let active = true;
         setLoading(true);
-        void fetchTeamPlanning(user.uid).then((data) => {
-            if (!active) return;
-            setTeamId(data?.teamId ?? null);
-            setPeople(data?.people ?? []);
-            setInvites(data?.invites ?? []);
-            setAutofill(data?.autofill ?? false);
-            setLoading(false);
-        });
-        return () => { active = false; };
-    }, [user]);
+        void reload();
+    }, [reload]);
+
+    /** Runs a team action, shows its error if any, then re-reads the page from Firestore. */
+    const run = async (action: () => Promise<ActionResult>, success?: string) => {
+        if (busy) return;
+        setBusy(true);
+        const error = await action();
+        if (error) toast({ title: "That didn't work", description: error, variant: "destructive" });
+        else if (success) toast({ title: success });
+        await reload();
+        setBusy(false);
+    };
 
     // Checks the accepted user list, then writes teams.pending + the invitee's invitations.
     const invitePerson = async (email: string): Promise<InviteResult> => {
         if (!user || !teamId)
             return { status: "error", message: "You need to be accepted onto a team before inviting people." };
+        if (!isOwner) return { status: "error", message: "Only the team owner can send invites." };
         const result = await sendInvite(user.uid, teamId, email);
-        if (result.status === "sent") {
-            setPeople((prev) => {
-                // Keep owner first, then pending invites, then confirmed members.
-                const lastPending = prev.reduce((idx, p, i) => (p.owner || p.pending ? i : idx), -1);
-                const next = [...prev];
-                next.splice(lastPending + 1, 0, result.person);
-                return next;
-            });
-        }
+        if (result.status === "sent") await reload();
         return result;
     };
-    // TODO: persist the autofill preference once the backend is wired up.
-    // TODO: these only update the page for now; write them back to Firestore next.
-    const removePerson = (id: string) =>
-        setPeople((prev) => prev.filter((p) => p.id !== id));
-    const declineInvite = (teamId: string) =>
-        setInvites((prev) => prev.filter((i) => i.teamId !== teamId));
-    const joinTeam = (teamId: string) => {
-        // TODO: leave current team and join the inviting team via the backend.
-        setInvites((prev) => prev.filter((i) => i.teamId !== teamId));
+
+    const removePerson = (person: Person) => {
+        if (!user || !teamId || !isOwner) return;
+        if (person.pending) {
+            void run(() => cancelInvite(user.uid, teamId, person.id), "Invitation cancelled");
+            return;
+        }
+        if (!window.confirm(`Remove ${displayName(person)} from your team? They'll be moved to a team of their own.`))
+            return;
+        void run(() => removeMember(user.uid, teamId, person.id), "Member removed");
+    };
+
+    const leave = () => {
+        if (!user) return;
+        if (!window.confirm("Leave this team? You'll be moved to a team of your own.")) return;
+        void run(() => leaveTeam(user.uid), "You left the team");
+    };
+
+    const changeAutofill = (checked: boolean) => {
+        if (!teamId || !isOwner) return;
+        setAutofill(checked);
+        void run(() => saveAutofill(teamId, checked));
+    };
+
+    const declineTeamInvite = (inviteTeamId: string) => {
+        if (!user) return;
+        void run(() => declineInvite(user.uid, inviteTeamId), "Invitation declined");
+    };
+
+    const joinTeam = (inviteTeamId: string) => {
+        if (!user) return;
+        if (people.some((p) => !p.self && !p.pending) &&
+            !window.confirm("Joining will take you off your current team. Continue?"))
+            return;
+        void run(() => acceptInvite(user.uid, inviteTeamId), "You joined the team");
     };
 
     return (
@@ -365,13 +439,27 @@ const TeamPlanning = () => {
                         <TeamSection
                             people={people}
                             loading={loading}
+                            isOwner={isOwner}
+                            busy={busy}
                             onRemove={removePerson}
+                            onLeave={leave}
                             autofill={autofill}
-                            onAutofillChange={setAutofill}
+                            onAutofillChange={changeAutofill}
                         />
-                        {!loading && <SendInviteSection people={people} onInvite={invitePerson} />}
+                        {!loading && isOwner && <SendInviteSection people={people} onInvite={invitePerson} />}
+                        {!loading && !isOwner && teamId && (
+                            <SectionBox title="Invite Teammates" className="!h-auto">
+                                <p>Only the team owner can invite or remove teammates.</p>
+                            </SectionBox>
+                        )}
                     </div>
-                    <InviteSection invites={invites} loading={loading} onDecline={declineInvite} onJoin={joinTeam} />
+                    <InviteSection
+                        invites={invites}
+                        loading={loading}
+                        busy={busy}
+                        onDecline={declineTeamInvite}
+                        onJoin={joinTeam}
+                    />
                 </div>
             </section>
         </Layout>
