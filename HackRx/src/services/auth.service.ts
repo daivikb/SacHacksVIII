@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { adminLogout } from "@/services/admin.service";
 
 import {
   GoogleAuthProvider,
@@ -278,7 +279,7 @@ export async function signUp(values: SignUpValues): Promise<string | null> {
     console.log("4. Attempting Firestore write");
 
     await setDoc(userRef, {
-      user_id: credential.user.uid,
+      user_uid: credential.user.uid,
       app_id: null,
       team_id: null,
       admin: false,
@@ -445,7 +446,7 @@ export async function signInWithGoogle(): Promise<string | null> {
     // Create the profile only on first Google sign-in
     if (!snapshot.exists()) {
       await setDoc(userRef, {
-        user_id: user.uid,
+        user_uid: user.uid,
         app_id: null,
         team_id: null,
         admin: false,
@@ -486,6 +487,7 @@ export async function sendPasswordReset(
  * Signs out the current Firebase user.
  */
 export async function signOut(): Promise<void> {
+  adminLogout();
   await firebaseSignOut(auth);
 }
 

@@ -21,12 +21,6 @@ import {
   db,
 } from "@/integrations/firebase/client";
 
-import {
-  signIn,
-  signOut,
-  type LoginValues,
-} from "@/services/auth.service";
-
 /**
  * These types intentionally remain flexible during the migration.
  *
@@ -74,43 +68,44 @@ export interface AdminWorkspace {
 export type ApplicationStatus = "approved" | "rejected";
 
 
-/**
- * Checks whether a user is an admin.
- *
- * Firestore structure:
- *
- * users/{userId}
- *   admin: true
- *
- * Only an explicit `true` counts; a missing field, `false`, or any other
- * value means "not an admin". The flag is granted from the Firebase console
- * (or the Admin SDK) — firestore.rules stop users from setting it on
- * themselves. This client-side check only controls the UI; the rules are
- * what actually protect the data.
- */
-export async function isAdmin(userId: string): Promise<boolean> {
-  try {
-    const snapshot = await getDoc(doc(db, "users", userId));
-    return snapshot.exists() && snapshot.data().admin === true;
-  } catch {
-    return false;
-  }
+const ADMIN_EMAIL = "test123@sachacks";
+const ADMIN_PASSWORD = "test123";
+const ADMIN_FLAG = "hackrx_admin_session";
+
+export function adminLogin(email: string, password: string): boolean {
+  const ok =
+    email.trim().toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASSWORD;
+  if (ok) sessionStorage.setItem(ADMIN_FLAG, "1");
+  return ok;
+}
+
+export function isHardcodedAdmin(): boolean {
+  return sessionStorage.getItem(ADMIN_FLAG) === "1";
+}
+
+export function adminLogout(): void {
+  sessionStorage.removeItem(ADMIN_FLAG);
 }
 
 /**
- * Signs in through the admin dialog: a normal Firebase email sign-in,
- * followed by a check of the account's `admin` flag. Non-admin accounts
- * are signed straight back out so they don't land in a half-logged-in state.
+ * Checks whether a user has an admin role.
+ *
+ * Firestore structure:
+ *
+ * user_roles/{userId}
+ *   role: "admin"
+ *
+ * Authorization must ultimately also be enforced by Firestore Security
+ * Rules or trusted backend code. This client-side check is only for
+ * controlling the UI.
  */
-export async function signInAsAdmin(values: LoginValues): Promise<string | null> {
-  const error = await signIn(values);
-  if (error) return error;
-
-  const uid = auth.currentUser?.uid;
-  if (uid && (await isAdmin(uid))) return null;
-
-  await signOut();
-  return "This account doesn't have admin access.";
+export async function isAdmin(userId: string): Promise<boolean> {
+  try {
+    const snapshot = await getDoc(doc(db, "user_roles", userId));
+    return snapshot.exists() && snapshot.data().role === "admin";
+  } catch {
+    return false;
+  }
 }
 
 /** Firestore Timestamp (or anything else) -> millis, for newest-first sorting. */
@@ -185,9 +180,9 @@ export async function fetchAdminWorkspace(): Promise<{
     if (denied && !auth.currentUser) {
       error =
         "Firestore refused the request because no Firebase account is signed in. " +
-        "Log in with an account whose users document has admin: true to see participants.";
+        "Log in with a Firebase account that has the admin role to see participants.";
     } else if (denied) {
-      error = `This account isn't allowed to read: ${failed.join(", ")}. Check that its users document has admin: true and that firestore.rules are deployed.`;
+      error = `This account isn't allowed to read: ${failed.join(", ")}. Check its admin role and the Firestore rules.`;
     } else {
       error = `Unable to load: ${failed.join(", ")}.`;
     }

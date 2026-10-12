@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { signInAsAdmin } from "@/services/admin.service";
+import { adminLogin } from "@/services/admin.service";
 import { useNavigate } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -133,16 +133,13 @@ export const AuthDialog = ({ open, mode, onOpenChange, onModeChange }: AuthDialo
 
   const onLogin = async (values: LoginValues) => {
     if (mode === "admin") {
-      setBusy(true);
-      const error = await signInAsAdmin(values);
-      setBusy(false);
-      if (error) {
-        toast({ title: "Login failed", description: error, variant: "destructive" });
-        return;
+      if (adminLogin(values.email, values.password)) {
+        toast({ title: "Welcome, admin" });
+        onOpenChange(false);
+        navigate("/admin");
+      } else {
+        toast({ title: "Login failed", description: "Invalid admin credentials.", variant: "destructive" });
       }
-      toast({ title: "Welcome, admin" });
-      onOpenChange(false);
-      navigate("/admin");
       return;
     }
 
@@ -320,9 +317,9 @@ export const AuthDialog = ({ open, mode, onOpenChange, onModeChange }: AuthDialo
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Admin email</FormLabel>
+                    <FormLabel>Admin email or username</FormLabel>
                     <FormControl>
-                      <Input type="email" autoComplete="username" placeholder="admin@hackrx.org" {...field} />
+                      <Input type="text" autoComplete="username" placeholder="admin@hackrx.org" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
