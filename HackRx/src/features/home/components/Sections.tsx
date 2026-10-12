@@ -134,59 +134,73 @@ const prizes = [
 
 const timeline = [
   {
-    date: "September 14", what: "Applications open", body: "Registration goes live — grab a spot before they run out.", icon: (
+    date: "October 12", what: "Applications open", body: "Registration goes live — grab a spot before they run out.", icon: (
       <svg className="icon" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="42" fill="none" stroke="var(--ink-black)" strokeWidth="4" /><path d="M50 26 v26 l18 12" stroke="var(--ink-black)" strokeWidth="4" {...S} /></svg>
     )
   },
   {
-    date: "October 9", what: "Applications close", body: "Last call — applications shut at end of day.", icon: (
+    date: "November 6", what: "Applications close", body: "Last call — applications shut at end of day.", icon: (
       <svg className="icon" viewBox="0 0 100 100" aria-hidden="true"><circle cx="35" cy="38" r="12" fill="none" stroke="var(--ink-black)" strokeWidth="3.4" /><circle cx="65" cy="38" r="12" fill="none" stroke="var(--ink-black)" strokeWidth="3.4" /><path d="M18 78c2-14 10-22 17-22M82 78c-2-14-10-22-17-22" stroke="var(--ink-black)" strokeWidth="3.4" {...S} /></svg>
     )
   },
   {
-    date: "October 17 · 9:00 AM", what: "Check-in", body: "Badges, breakfast, and the opening keynote.", icon: (
+    date: "November 15", what: "Hack!", body: "Day of the event", icon: (
       <svg className="icon" viewBox="0 0 100 100" aria-hidden="true"><rect x="20" y="30" width="60" height="42" rx="6" fill="none" stroke="var(--ink-black)" strokeWidth="3.4" /><path d="M35 46 l10 10 20 -20" stroke="var(--crimson)" strokeWidth="3.2" {...S} /></svg>
     )
   },
-  { date: "October 17 · Daytime", what: "Hack!", body: "One full day of building with mentors on the floor.", icon: DnaIcon },
-  {
-    date: "October 17 · Evening", what: "Demo day", body: "Four minutes on stage in front of clinicians and founders.", icon: (
-      <svg className="icon" viewBox="0 0 100 100" aria-hidden="true"><rect x="16" y="24" width="68" height="46" rx="4" fill="none" stroke="var(--ink-black)" strokeWidth="3.4" /><path d="M16 34 h68" stroke="var(--ink-black)" strokeWidth="3.4" /><circle cx="50" cy="52" r="9" fill="none" stroke="var(--crimson)" strokeWidth="3" /></svg>
-    )
-  },
-  {
-    date: "October 17 · 10:00 PM", what: "Awards", body: "Prizes, photos, and the after-party.", icon: (
-      <svg className="icon" viewBox="0 0 100 100" aria-hidden="true"><path d="M50 8 L61 38 L93 38 L67 57 L77 88 L50 68 L23 88 L33 57 L7 38 L39 38 Z" fill="none" stroke="var(--crimson)" strokeWidth="3.4" strokeLinejoin="round" /></svg>
-    )
-  },
 ];
 
-const sponsors = [
-  "NordVPN",
-  "M.S. Program of Medical Device Development Program",
-  "UC Davis College of Letters & Sciences",
+const sponsorTiers = [
+  {
+    key: "jubilee",
+    label: "Jubilee",
+    items: [
+      { name: "M.S. Program of Medical Device Development Program", logo: "/sponsors/medical-device.png" },
+    ],
+  },
+  {
+    key: "platinum",
+    label: "Platinum",
+    items: [
+      { name: "UC Davis College of Letters & Sciences", logo: "/sponsors/letters-sciences.png" },
+      { name: "UC Davis Graduate School of Management MSBA", logo: "/sponsors/gsm-msba.png" },
+      { name: "UC Davis Health Betty Irene Moore School of Nursing", logo: "/sponsors/nursing.png" },
+    ],
+  },
+  {
+    key: "gold",
+    label: "Gold",
+    items: [
+      { name: "NordVPN", logo: "/sponsors/nordvpn.svg" },
+      { name: "UC Davis Department of Computer Science", logo: "/sponsors/computer-science.png" },
+    ],
+  },
 ];
 
 const faqs = [
-  { q: "Do I need experience?", a: "Nope — everyone's welcome, whatever your background." },
-  { q: "Can I come alone?", a: "Yes. We'll help you find a team once you're there." },
-  { q: "What should I bring?", a: "Your laptop, your ideas, and your enthusiasm." },
-  { q: "Will there be food?", a: "Yep — fuel up, we've got you covered all weekend." },
+  { q: "When and where?", a: "Betty Irene Moore (Link Map) in Sacramento, CA. Date is Sunday, Novemeber 15th" },
+  { q: "Who can attend?", a: "Any college student or recent graduate is welcome to participate in SacHacks!" },
+  { q: "When is the application deadline?", a: "Friday, November 6th at 11:59pm" },
+  { q: "What is a hackathon?", a: "A hackathon is a 24-hour event where students collaborate to build creative projects and compete for prizes." },
+  { q: "What is the maximum team size?", a: "Teams should be of 1-3 members. No more than 3 allowed on a single team." },
 ];
 
 const team = [
-  { role: "Lead organiser", name: "Member 1" },
-  { role: "Operations", name: "Member 2" },
-  { role: "Sponsorships", name: "Member 3" },
-  { role: "Design", name: "Member 4" },
+  { role: "President", name: "Daivik (Dave) Bhardwaj" },
+  { role: "Vice-President & VP of Logistics", name: " Munneth Gill" },
+  { role: "VP of Software", name: "Shlok Khare" },
+  { role: "VP of Marketing", name: "Melissa Li" },
+  { role: "Director of Logistics", name: "Shaffana Mustafa" },
+  { role: "Director of Logistics", name: "Aditi Dantaluri" },
+  { role: "Director of Software", name: "Vedant Chaudhary" },
+  { role: "Director of Software", name: "Ryan Mathur" },
+  { role: "Director of Software", name: "Jeremy Phan" },
+  { role: "Director of Logistics", name: "Kartik Yedumbaka" },
+  { role: "Director of Logistics", name: "Rigo Lemus" },
+  { role: "Director of Logistics", name: "Maisie Wong" },
+
 ];
 
-const judges = [
-  { role: "Emergency medicine", name: "Judge 1" },
-  { role: "Health AI research", name: "Judge 2" },
-  { role: "Founder, CareLoop", name: "Judge 3" },
-  { role: "Bioengineering", name: "Judge 4" },
-];
 
 /* ------------------------------- components ------------------------------- */
 
@@ -247,10 +261,10 @@ export const Content = () => {
 
         <div className="section-head">
           <p className="eyebrow">AI-Era Medical Hackathon</p>
-          <span className="meta-label">Saturday, October 17 · In-Person</span>
+          <span className="meta-label">Sunday, November 15 · In-Person</span>
         </div>
         <h2 className="h2">Diagnose the problem. Prescribe the fix.</h2>
-        <p className="intro-lede">
+        <p>
           We have diagnosed the problem: healthcare needs technologies, platforms, and workflows that
           accelerate translational medicine and make biomedical research more efficient, accessible,
           and impactful. What fix would you prescribe?
@@ -258,18 +272,31 @@ export const Content = () => {
       </section>
 
       <section className="panel" id="sponsors">
-
         <Amoeba tone="gold" size="sm" style={{ top: "14%", left: "3%", animationDelay: "-3s, -6s" }} />
         <p className="eyebrow">Sponsors</p>
         <h2 className="h2">Backed by builders.</h2>
-        <div className="sponsor-list">
-          {sponsors.map((s) => (
-            <span className="sponsor-chip" key={s}>{s}</span>
+
+        <div className="sponsor-pyramid">
+          {sponsorTiers.map((tier) => (
+            <div
+              className={`sponsor-tier tier-${tier.key}`}
+              key={tier.key}
+              role="group"
+              aria-label={`${tier.label} sponsors`}
+            >
+              <div className="tier-row">
+                {tier.items.map((s) => (
+                  <div className="sponsor-chip" key={s.name}>
+                    <img src={s.logo} alt={s.name} loading="lazy" />
+                  </div>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </section>
 
-      <Chapter id="prizes" title="Track & Prizes" sub="Five first-place awards" />
+      <Chapter id="prizes" title="Track & Prizes" sub="Five first-place awards (prizes to be revealed soon)" />
 
 
       {prizes.map((p, i) => (
@@ -326,24 +353,22 @@ export const Content = () => {
 
       <section className="panel" id="team">
         <Amoeba tone="gold" size="tiny" style={{ bottom: "12%", left: "4%", animationDelay: "-1s, -7s" }} />
-        <p className="eyebrow">Team &amp; Judges</p>
+        <p className="eyebrow">SacHacks Staff</p>
         <h2 className="h2">The people behind the panel.</h2>
-        <div className="people-grid">
-          {team.map((p) => (
-            <div className="person-card" key={p.name}>
-              <span className="role">{p.role}</span>
-              <h4>{p.name}</h4>
-            </div>
-          ))}
-        </div>
-        <p className="people-sub">Judging panel</p>
-        <div className="people-grid">
-          {judges.map((p) => (
-            <div className="person-card" key={p.name}>
-              <span className="role">{p.role}</span>
-              <h4>{p.name}</h4>
-            </div>
-          ))}
+
+        <div className="people-marquee">
+          <div className="people-track">
+            {[...team, ...team].map((p, i) => (
+              <div
+                className="person-card"
+                key={`${p.name}-${i}`}
+                aria-hidden={i >= team.length ? true : undefined}
+              >
+                <span className="role">{p.role}</span>
+                <h4>{p.name}</h4>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 

@@ -6,6 +6,7 @@ import Dashboard from "@/pages/Dashboard";
 import Account from "@/pages/Account";
 import AdminDashboard from "@/pages/AdminDashboard";
 import AdminAccount from "@/pages/AdminAccount";
+import TeamPlanning from "@/pages/TeamPlanning";
 import { useAuth } from "@/context/auth-context";
 import { useAdmin } from "@/hooks/useAdmin";
 
@@ -32,7 +33,9 @@ const ParticipantDashboard = () => {
 /** Central route table for the app. */
 export const AppRoutes = () => (
   <Routes>
+
     <Route path="/" element={<Home />} />
+
     <Route
       path="/dashboard"
       element={
@@ -41,6 +44,7 @@ export const AppRoutes = () => (
         </Protected>
       }
     />
+
     <Route
       path="/account"
       element={
@@ -66,8 +70,19 @@ export const AppRoutes = () => (
         </AdminOnly>
       }
     />
+
+    <Route
+      path="/teams"
+      element={
+        <Protected>
+          <TeamPlanning />
+        </Protected>
+      }
+    />
+
     {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
     <Route path="*" element={<NotFound />} />
+
   </Routes>
 );
 

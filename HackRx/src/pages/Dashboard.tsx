@@ -24,8 +24,7 @@ const Dashboard = () => {
         <Amoeba tone="gold" size="tiny" style={{ bottom: "18%", right: "8%", animationDelay: "-6s, -1s" }} />
         <span className="eyebrow">Hacker Hub</span>
         <h1 className="chapter-title">Welcome, {name}</h1>
-        <p className="chapter-sub">Applications open on September 14. Wait until then.</p>
-
+        <p className="chapter-sub">Applications open on October 12. Wait until then.</p>
         <Countdown />
       </section>
     </Layout>
