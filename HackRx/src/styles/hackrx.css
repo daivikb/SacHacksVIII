@@ -4352,3 +4352,408 @@ html.low-end .page-decor .decor-star {
     overflow-x: auto;
   }
 }
+/* ==========================================================================
+   APPLICATION FORM (/apply)
+   ========================================================================== */
+.hackrx-page .panel.portal.apply {
+  justify-content: flex-start;
+  padding: calc(var(--space-lg) + 4.5rem) var(--gutter) var(--space-xl);
+}
+
+.hackrx-page .panel.apply .chapter-title {
+  font-size: clamp(2.5rem, 1rem + 6vw, 6.5rem);
+}
+
+.gform-loading {
+  margin: var(--space-md) 0 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.gform {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  width: min(760px, 100%);
+  margin-top: var(--space-md);
+  scroll-margin-top: 5.5rem;
+  font-family: var(--sans);
+  text-align: left;
+  color: var(--cream);
+}
+
+.gform-head,
+.gform-q {
+  padding: var(--space-sm);
+  background: rgba(20, 8, 32, .62);
+  border: 2px solid var(--ink-black);
+  border-radius: 4px;
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, .45);
+  transition: border-color .2s ease;
+}
+
+.gform-head {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 8px solid var(--crimson);
+}
+
+.gform-head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+
+.gform-head h2 {
+  margin: 0;
+  font-family: var(--comic-display);
+  font-weight: 400;
+  font-size: clamp(1.4rem, 1rem + 1.4vw, 2rem);
+  letter-spacing: .04em;
+  color: var(--cream);
+}
+
+.gform-count {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .06em;
+  white-space: nowrap;
+  color: var(--ink-dim);
+}
+
+.gform-progress {
+  height: 6px;
+  overflow: hidden;
+  background: rgba(237, 234, 222, .12);
+  border-radius: 999px;
+}
+
+.gform-progress>span {
+  display: block;
+  height: 100%;
+  background: var(--sv-yellow);
+  transition: width .35s var(--liquid);
+}
+
+.gform-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gform-steps button {
+  width: 34px;
+  height: 34px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink-dim);
+  background: transparent;
+  border: 2px solid rgba(237, 234, 222, .28);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background-color .2s ease, border-color .2s ease, color .2s ease;
+}
+
+.gform-steps button.is-done {
+  color: var(--sv-yellow);
+  border-color: var(--sv-yellow);
+}
+
+.gform-steps button.is-current {
+  color: var(--ink-black);
+  background: var(--sv-yellow);
+  border-color: var(--ink-black);
+}
+
+.gform-steps button:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.gform button:focus-visible,
+.gform-option:has(input:focus-visible),
+.gform-hint a:focus-visible {
+  outline: 2px solid var(--sv-cyan);
+  outline-offset: 2px;
+}
+
+.gform-hint {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+.gform-q .gform-hint {
+  margin: -4px 0 12px;
+}
+
+.gform-hint a {
+  color: var(--sv-yellow);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.gform-required {
+  color: #ff8fb0;
+}
+
+.gform-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  animation: gform-in .3s var(--liquid) both;
+}
+
+@keyframes gform-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.gform-q:has([aria-invalid="true"]) {
+  border-color: #ff8fb0;
+}
+
+.gform .gform-title {
+  display: block;
+  margin: 0 0 12px;
+  font-family: var(--sans);
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--cream);
+}
+
+.gform [id$="-form-item-message"] {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  color: #ff8fb0;
+}
+
+.gform .gform-input,
+.gform .gform-select {
+  width: 100%;
+  height: auto;
+  padding: 10px 12px;
+  font-family: var(--sans);
+  font-size: 15px;
+  color: var(--cream);
+  background: rgba(8, 6, 12, .6);
+  border: 2px solid rgba(237, 234, 222, .28);
+  border-radius: 2px;
+}
+
+.gform textarea.gform-input {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.gform .gform-select {
+  width: min(100%, 380px);
+  cursor: pointer;
+}
+
+.gform .gform-select option {
+  color: var(--ink-black);
+  background: var(--surface-cream);
+}
+
+.gform .gform-input::placeholder {
+  color: rgba(237, 234, 222, .45);
+}
+
+.gform .gform-input:focus-visible,
+.gform .gform-select:focus-visible {
+  border-color: var(--crimson);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(225, 79, 216, .28);
+}
+
+.gform .gform-input[aria-invalid="true"],
+.gform .gform-select[aria-invalid="true"] {
+  border-color: #ff8fb0;
+}
+
+.gform-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gform-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gform-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--cream);
+  background: rgba(8, 6, 12, .35);
+  border: 2px solid rgba(237, 234, 222, .16);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color .2s ease, background-color .2s ease;
+}
+
+.gform-option:hover {
+  border-color: rgba(237, 234, 222, .4);
+}
+
+.gform-option.is-selected {
+  background: rgba(242, 214, 117, .12);
+  border-color: var(--sv-yellow);
+}
+
+.gform-option.is-disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.gform-option input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--sv-yellow);
+  cursor: inherit;
+}
+
+/* chips: the whole pill is the control, the radio itself is visually hidden */
+.gform-chips .gform-option {
+  padding: 8px 16px;
+  border-radius: 999px;
+}
+
+.gform-chips .gform-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gform-foot {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.gform-foot:has(> *) {
+  margin-top: 8px;
+}
+
+.gform-foot>.gform-count,
+.gform-clear {
+  margin-left: auto;
+}
+
+.gform-clear {
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--sv-yellow);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.gform-followup {
+  margin-top: 16px;
+  padding: 4px 0 4px 16px;
+  border-left: 3px solid var(--crimson);
+}
+
+.gform-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 4px;
+  padding-left: 1.2em;
+  font-size: 14.5px;
+  line-height: 1.5;
+  list-style: disc;
+  color: var(--ink-dim);
+}
+
+.gform-nav {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.gform-nav .venom-submit {
+  width: auto;
+  min-width: 180px;
+}
+
+.gform-back {
+  margin-right: auto;
+  padding: 9px 24px;
+  font-family: var(--comic-display);
+  font-size: 18px;
+  letter-spacing: .05em;
+  color: var(--cream);
+  background: transparent;
+  border: 3px solid rgba(237, 234, 222, .5);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color .2s ease;
+}
+
+.gform-back:hover:not(:disabled) {
+  border-color: var(--cream);
+}
+
+.gform-back:disabled,
+.gform .venom-switch button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+  .gform-nav .venom-submit {
+    min-width: 0;
+    flex: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gform-section {
+    animation: none;
+  }
+
+  .gform-progress>span {
+    transition: none;
+  }
+}

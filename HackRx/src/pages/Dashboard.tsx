@@ -23,7 +23,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const applyTriggers = useGlitchTriggers();
   const toApplicationForm = () => {
-    navigate("/application-form")
+    navigate("/apply")
   }
 
   return (

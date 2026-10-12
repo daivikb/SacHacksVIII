@@ -98,7 +98,6 @@ export async function signUp(values: SignUpValues): Promise<string | null> {
 
     await setDoc(userRef, {
       user_id: credential.user.uid,
-      app_id: null,
       team_id: null,
       admin: false,
       email: credential.user.email ?? values.email.trim(),
@@ -166,7 +165,6 @@ export async function signInWithGoogle(): Promise<string | null> {
     if (!snapshot.exists()) {
       await setDoc(userRef, {
         user_id: user.uid,
-        app_id: null,
         team_id: null,
         admin: false,
         email: user.email,

@@ -1,10 +1,30 @@
 rules_version = '2';
 
-// Admin access is the `admin` attribute on users/{uid}. Only an explicit
-// `true` counts. It is granted from the Firebase console or the Admin SDK
-// (both bypass these rules) — no client can set it, including on itself.
+// HackRx Firestore rules.
+//
+// users/{uid}             one per account, created at sign-up
+//   admin      true for organisers. Granted only from the Firebase console or
+//              the Admin SDK (both bypass these rules); no client can set it.
+//   user_id    the account's uid
+//   email      the account's sign-in email (the admin roster matches
+//              applications to people by email, so it can't be spoofed)
+//   team_id    the team they're on, or null
+//   application  added once from /apply: every answer, status ("pending" |
+//              "approved" | "rejected"), created_at, and reviewed_by /
+//              reviewed_at once an admin decides. Applicants can't edit it
+//              after submitting; admins can only change the review fields.
+//
+// teams/{teamId}
+//   members    list of member uids, at most 4
+//
+// Team membership is stored on both sides (users.team_id and teams.members)
+// and must always agree, so joining, leaving or switching teams has to update
+// both documents in one writeBatch. A write that changes only one side is
+// rejected.
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ---- helpers ------------------------------------------------------------
 
     function signedIn() {
       return request.auth != null;
@@ -14,44 +34,147 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
-    function isAdmin() {
-      return signedIn()
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('admin', false) == true;
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
     }
 
-    // ---- users ----------------------------------------------------------
+    function teamPath(teamId) {
+      return /databases/$(database)/documents/teams/$(teamId);
+    }
+
+    function isAdmin() {
+      return signedIn() && get(userPath(request.auth.uid)).data.get('admin', false) == true;
+    }
+
+    function tokenEmail() {
+      return request.auth.token.get('email', null);
+    }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // The team this user's document will point at once the whole write lands.
+    function teamIdAfterWrite(uid) {
+      return getAfter(userPath(uid)).data.get('team_id', null);
+    }
+
+    // If team_id changes, the old team must no longer list the user (or be
+    // deleted) and the new team must list them.
+    function teamChangeIsConsistent(uid) {
+      let before = resource.data.get('team_id', null);
+      let after = request.resource.data.get('team_id', null);
+      return before == after || (
+        (before == null
+          || !existsAfter(teamPath(before))
+          || !(uid in getAfter(teamPath(before)).data.members))
+        && (after == null || uid in getAfter(teamPath(after)).data.members)
+      );
+    }
+
+    function hasApplication(data) {
+      return data.get('application', null) != null;
+    }
+
+    // Applicant: `application` can be added once, as pending, and never edited.
+    function applicationSubmitIsValid() {
+      return !changedKeys().hasAny(['application'])
+        || (!hasApplication(resource.data)
+            && request.resource.data.application.status == 'pending'
+            && request.resource.data.application.created_at == request.time
+            && !request.resource.data.application.keys().hasAny(['reviewed_by', 'reviewed_at']));
+    }
+
+    // Admin: may only change the review fields of an existing application.
+    function applicationReviewIsValid() {
+      return !changedKeys().hasAny(['application'])
+        || (hasApplication(resource.data)
+            && request.resource.data.application.diff(resource.data.application)
+                 .affectedKeys().hasOnly(['status', 'reviewed_by', 'reviewed_at'])
+            && request.resource.data.application.status in ['pending', 'approved', 'rejected']
+            && request.resource.data.application.reviewed_by == request.auth.uid);
+    }
+
+    // email can only be set to the address the user actually signs in with.
+    function emailIsOwn() {
+      return !changedKeys().hasAny(['email'])
+        || request.resource.data.email == tokenEmail();
+    }
+
+    // ---- users --------------------------------------------------------------
     match /users/{uid} {
       allow read: if isSelf(uid) || isAdmin();
 
-      // Sign-up (email and Google) writes admin: false and its own uid as user_id.
+      // Sign-up (email or Google): a non-admin profile for your own uid, with
+      // your own email, no application and no team yet.
       allow create: if isSelf(uid)
         && request.resource.data.get('admin', false) == false
-        && request.resource.data.user_id == uid;
+        && request.resource.data.user_id == uid
+        && request.resource.data.get('email', null) == tokenEmail()
+        && !hasApplication(request.resource.data)
+        && request.resource.data.get('team_id', null) == null;
 
-      // Profile / email updates may touch any field except `admin` and `user_id`.
-      allow update: if isSelf(uid)
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['admin', 'user_id']);
+      // Users can add or change their own fields (profile, their application,
+      // ...) within the checks above. Nobody can change `admin` or `user_id`
+      // from the app. Admins can edit other fields on anyone, but only the
+      // review fields of an application.
+      allow update: if !changedKeys().hasAny(['admin', 'user_id'])
+        && ((isSelf(uid)
+              && emailIsOwn()
+              && applicationSubmitIsValid()
+              && teamChangeIsConsistent(uid))
+            || (isAdmin() && applicationReviewIsValid()));
 
       allow delete: if false;
     }
 
-    // ---- admin workspace -------------------------------------------------
-    // Participant-facing pages don't read or write these yet. When they do
-    // (e.g. the application form submitting), add owner rules here.
+    // ---- teams --------------------------------------------------------------
+    match /teams/{teamId} {
+      // Adds exactly the caller to `members`, within the size cap, and the
+      // caller's user doc points at this team after the write.
+      function joining() {
+        let before = resource.data.members;
+        let after = request.resource.data.members;
+        return signedIn()
+          && changedKeys().hasOnly(['members'])
+          && !(request.auth.uid in before)
+          && after.size() == before.size() + 1
+          && after.toSet() == before.toSet().union([request.auth.uid].toSet())
+          && after.size() <= 4
+          && teamIdAfterWrite(request.auth.uid) == teamId;
+      }
 
-    match /applications/{id} {
-      allow read: if isAdmin();
-      // Reviews may only change the review fields.
-      allow update: if isAdmin()
-        && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['status', 'reviewed_by', 'reviewed_at'])
-        && request.resource.data.reviewed_by == request.auth.uid;
+      // Removes exactly the caller from `members`, and the caller's user doc
+      // no longer points at this team after the write.
+      function leaving() {
+        let before = resource.data.members;
+        let after = request.resource.data.members;
+        return signedIn()
+          && changedKeys().hasOnly(['members'])
+          && request.auth.uid in before
+          && after.size() == before.size() - 1
+          && after.toSet() == before.toSet().difference([request.auth.uid].toSet())
+          && teamIdAfterWrite(request.auth.uid) != teamId;
+      }
+
+      // Signed-in users can see teams (to view teammates and pick one to join).
+      allow read: if signedIn();
+
+      // Start a team: you are its only member and your user doc points at it.
+      allow create: if signedIn()
+        && request.resource.data.members == [request.auth.uid]
+        && teamIdAfterWrite(request.auth.uid) == teamId;
+
+      allow update: if isAdmin() || joining() || leaving();
+
+      // The last member may delete the team as they leave it.
+      allow delete: if isAdmin()
+        || (signedIn()
+            && resource.data.members == [request.auth.uid]
+            && teamIdAfterWrite(request.auth.uid) != teamId);
     }
 
-    match /teams/{id} {
-      allow read: if isAdmin();
-    }
-
+    // ---- admin-only ---------------------------------------------------------
     match /demos/{id} {
       allow read: if isAdmin();
     }

@@ -142,7 +142,7 @@ async function readCollection<T extends { id: string }>(
  *
  * Firestore collections replace the old Supabase tables:
  *
- * applications
+ * users (applications are the `application` field on each user)
  * teams
  * demos
  * users
@@ -157,7 +157,6 @@ export async function fetchAdminWorkspace(): Promise<{
   error: string | null;
 }> {
   const sources = [
-    ["applications", "created_at"],
     ["teams", "formed_at"],
     ["demos", "created_at"],
     ["users", "created_at"],
@@ -193,13 +192,28 @@ export async function fetchAdminWorkspace(): Promise<{
     }
   }
 
+  const members = rows[2] as Member[];
+
+  // Applications are stored on the applicant's user document. Each one is
+  // flattened into its own row, keyed by the applicant's uid, with the
+  // account's email so the roster can match it to the member.
+  const applications = members
+    .filter((m) => m.application && typeof m.application === "object")
+    .map((m): Application => ({
+      ...(m.application as Record<string, unknown>),
+      id: m.id,
+      user_id: m.id,
+      email: m.email,
+    }))
+    .sort((x, y) => toMillis(y.created_at) - toMillis(x.created_at));
+
   return {
     data: {
-      applications: rows[0] as Application[],
-      teams: rows[1] as Team[],
-      demos: rows[2] as Demo[],
-      members: rows[3] as Member[],
-      certifications: rows[4] as Certification[],
+      applications,
+      teams: rows[0] as Team[],
+      demos: rows[1] as Demo[],
+      members,
+      certifications: rows[3] as Certification[],
     },
     error,
   };
@@ -214,10 +228,11 @@ export async function reviewApplication(
   reviewerId: string,
 ): Promise<string | null> {
   try {
-    await updateDoc(doc(db, "applications", id), {
-      status,
-      reviewed_by: reviewerId,
-      reviewed_at: serverTimestamp(),
+    // `id` is the applicant's uid; the application is a field on their user doc.
+    await updateDoc(doc(db, "users", id), {
+      "application.status": status,
+      "application.reviewed_by": reviewerId,
+      "application.reviewed_at": serverTimestamp(),
     });
 
     return null;

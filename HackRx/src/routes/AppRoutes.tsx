@@ -7,9 +7,9 @@ import Account from "@/pages/Account";
 import AdminDashboard from "@/pages/AdminDashboard";
 import AdminAccount from "@/pages/AdminAccount";
 import TeamPlanning from "@/pages/TeamPlanning";
-import ApplicationForm from "@/pages/ApplicationForm";
 import { useAuth } from "@/context/auth-context";
 import { useAdmin } from "@/hooks/useAdmin";
+import SignupPage from "@/pages/SignupPage";
 
 /** Gates the hacker hub behind an active session. */
 const Protected = ({ children }: { children: ReactElement }) => {
@@ -82,9 +82,11 @@ export const AppRoutes = () => (
     />
 
     <Route
-      path="/application-form"
+      path="/apply"
       element={
-        <ApplicationForm />
+        <Protected>
+          <SignupPage />
+        </Protected>
       }
     />
 
