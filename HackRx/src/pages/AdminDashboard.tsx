@@ -50,7 +50,7 @@ const EVENT_NAME = "Admin Control Room";
 // PLACEHOLDER — the event's dates, printed on the certificate preview. Should come
 // from an event/settings document in Firestore; hardcoded because none exists.
 // Seen: Certificates tab → Prizes panel → top line of the PREVIEW card.
-const EVENT_DATES = "10–11 October 2026";
+const EVENT_DATES = "15 November 2026";
 // PLACEHOLDER — the venue/host line printed on the certificate preview. Same story:
 // belongs on an event/settings document, hardcoded until there is one.
 // Seen: Certificates tab → Prizes panel → PREVIEW card, sentence under the recipient.
@@ -207,12 +207,12 @@ const STYLES = `
 // Seen: Certificates tab → Prizes panel (the six radio options), the PREVIEW card
 // title, and the "Issue …" buttons in the bulk bar and under the preview.
 const AWARDS: Award[] = [
-  { id: "trans",  num: "01", label: "Best Translational Science",  desc: "For the team moving discovery to bedside fastest." },
-  { id: "clin",   num: "02", label: "Best Clinical Impact",        desc: "Best Clinical Science Prize — care that measurably improves outcomes." },
-  { id: "bio",    num: "03", label: "Best Biotech Innovation",     desc: "Hardware, wetware, and data pushed somewhere new." },
-  { id: "equity", num: "04", label: "Health Equity Award",         desc: "For the build that widens access to care." },
-  { id: "inter",  num: "05", label: "Best Interdisciplinary Hack", desc: "Best overall hack across disciplines." },
-  { id: "part",   num: "06", label: DEFAULT_CERT_TITLE,            desc: "Every hacker who checked in and submitted.", everyone: true },
+  { id: "trans", num: "01", label: "Best Translational Science", desc: "For the team moving discovery to bedside fastest." },
+  { id: "clin", num: "02", label: "Best Clinical Impact", desc: "Best Clinical Science Prize — care that measurably improves outcomes." },
+  { id: "bio", num: "03", label: "Best Biotech Innovation", desc: "Hardware, wetware, and data pushed somewhere new." },
+  { id: "equity", num: "04", label: "Health Equity Award", desc: "For the build that widens access to care." },
+  { id: "inter", num: "05", label: "Best Interdisciplinary Hack", desc: "Best overall hack across disciplines." },
+  { id: "part", num: "06", label: DEFAULT_CERT_TITLE, desc: "Every hacker who checked in and submitted.", everyone: true },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -281,8 +281,8 @@ function statusTone(s: SignupStatus): { label: string; bg: string; fg: string } 
   switch (s) {
     case "accepted": return { label: "Accepted", bg: C.lilacSoft, fg: C.lilac };
     case "declined": return { label: "Declined", bg: "rgba(242,237,228,.08)", fg: "rgba(242,237,228,.55)" };
-    case "none":     return { label: "No application", bg: "rgba(242,237,228,.08)", fg: "rgba(242,237,228,.55)" };
-    default:         return { label: "Awaiting decision", bg: "rgba(245,226,123,.14)", fg: C.gold };
+    case "none": return { label: "No application", bg: "rgba(242,237,228,.08)", fg: "rgba(242,237,228,.55)" };
+    default: return { label: "Awaiting decision", bg: "rgba(245,226,123,.14)", fg: C.gold };
   }
 }
 
@@ -290,8 +290,8 @@ function tone(t: Tone): { bg: string; fg: string } {
   switch (t) {
     case "accepted": return { bg: C.lilacSoft, fg: C.lilac };
     case "declined": return { bg: "rgba(242,237,228,.08)", fg: "rgba(242,237,228,.55)" };
-    case "off":      return { bg: "rgba(242,237,228,.08)", fg: "rgba(242,237,228,.55)" };
-    default:         return { bg: "rgba(245,226,123,.14)", fg: C.gold };
+    case "off": return { bg: "rgba(242,237,228,.08)", fg: "rgba(242,237,228,.55)" };
+    default: return { bg: "rgba(245,226,123,.14)", fg: C.gold };
   }
 }
 
@@ -747,43 +747,43 @@ const AdminDashboard = () => {
   const bulkActions: { label: string; primary?: boolean; quiet?: boolean; run: () => void }[] = [
     ...(isSignups
       ? [
-          { label: "Accept", primary: true, run: () => void runReview("approved") },
-          { label: "Decline", run: () => void runReview("rejected") },
-        ]
+        { label: "Accept", primary: true, run: () => void runReview("approved") },
+        { label: "Decline", run: () => void runReview("rejected") },
+      ]
       : isTeams
         ? [
-            // PLACEHOLDER — approves the selected teams' pending join/removal requests.
-            // Needs a team-requests collection and a service function to resolve them.
-            // Seen: Teams tab → tick a team → pink bulk bar above the table.
-            { label: "Approve team change", primary: true, run: () => notWired("Team change approval") },
-            // PLACEHOLDER — promotes a member to team leader. Needs a leader field on
-            // the team doc (e.g. `leader_id`) and a service function to set it.
-            // Seen: Teams tab → tick a team → pink bulk bar above the table.
-            { label: "Make leader", run: () => notWired("Team leaders") },
-            // PLACEHOLDER — removes a member from a team. Needs team membership stored
-            // (a `members` array on the team, or `team_id` on each user) to edit.
-            // Seen: Teams tab → tick a team → pink bulk bar above the table.
-            { label: "Remove from team", run: () => notWired("Team membership") },
-          ]
+          // PLACEHOLDER — approves the selected teams' pending join/removal requests.
+          // Needs a team-requests collection and a service function to resolve them.
+          // Seen: Teams tab → tick a team → pink bulk bar above the table.
+          { label: "Approve team change", primary: true, run: () => notWired("Team change approval") },
+          // PLACEHOLDER — promotes a member to team leader. Needs a leader field on
+          // the team doc (e.g. `leader_id`) and a service function to set it.
+          // Seen: Teams tab → tick a team → pink bulk bar above the table.
+          { label: "Make leader", run: () => notWired("Team leaders") },
+          // PLACEHOLDER — removes a member from a team. Needs team membership stored
+          // (a `members` array on the team, or `team_id` on each user) to edit.
+          // Seen: Teams tab → tick a team → pink bulk bar above the table.
+          { label: "Remove from team", run: () => notWired("Team membership") },
+        ]
         : [
-            { label: `Issue “${award.label}”`, primary: true, run: () => void runCertify() },
-            // PLACEHOLDER — issues the chosen award to every teammate of the selected
-            // hackers. Needs team membership in Firestore to know who the teammates are.
-            // Seen: Certificates tab → tick a hacker → pink bulk bar above the table.
-            { label: "Extend to whole teams", run: () => notWired("Team-wide certificates") },
-          ]),
+          { label: `Issue “${award.label}”`, primary: true, run: () => void runCertify() },
+          // PLACEHOLDER — issues the chosen award to every teammate of the selected
+          // hackers. Needs team membership in Firestore to know who the teammates are.
+          // Seen: Certificates tab → tick a hacker → pink bulk bar above the table.
+          { label: "Extend to whole teams", run: () => notWired("Team-wide certificates") },
+        ]),
     { label: "Email selected", run: emailSelected },
     { label: "Clear", quiet: true, run: clearSelection },
   ];
 
   const lensCards = [
-    { key: "signups" as Lens, title: "Signups",      count: plural(stats.awaiting, "waiting", "waiting"), figure: String(stats.total),    note: "Accept or decline registrations",     fg: C.pink },
+    { key: "signups" as Lens, title: "Signups", count: plural(stats.awaiting, "waiting", "waiting"), figure: String(stats.total), note: "Accept or decline registrations", fg: C.pink },
     // PLACEHOLDER — the Teams card's "0 waiting" badge is the number of pending team
     // requests (joins/removals). Hardcoded to 0 until a requests collection exists.
     // Seen: top of the page → "Teams" card → pill in its top-right corner.
-    { key: "teams"   as Lens, title: "Teams",        count: plural(0, "waiting", "waiting"),              figure: String(stats.teams),    note: "Teams as participants form them",     fg: C.lilac },
-    { key: "demos"   as Lens, title: "Demos",        count: plural(stats.demos, "submitted", "submitted"), figure: String(stats.demos),   note: "Project demos and review states",     fg: C.ink },
-    { key: "certs"   as Lens, title: "Certificates", count: plural(stats.issued, "issued", "issued"),     figure: String(stats.accepted), note: "Assign and issue awards by hand",     fg: C.gold },
+    { key: "teams" as Lens, title: "Teams", count: plural(0, "waiting", "waiting"), figure: String(stats.teams), note: "Teams as participants form them", fg: C.lilac },
+    { key: "demos" as Lens, title: "Demos", count: plural(stats.demos, "submitted", "submitted"), figure: String(stats.demos), note: "Project demos and review states", fg: C.ink },
+    { key: "certs" as Lens, title: "Certificates", count: plural(stats.issued, "issued", "issued"), figure: String(stats.accepted), note: "Assign and issue awards by hand", fg: C.gold },
   ];
 
   const titles: Record<Lens, [string, string]> = {
@@ -1274,10 +1274,10 @@ const AdminDashboard = () => {
                     <DetailRow label="Email">
                       {person
                         ? (() => {
-                            // SECURITY — only link the address if it is a plain, valid email.
-                            const href = mailtoHref(person.email);
-                            return href ? <a href={href}>{person.email}</a> : person.email;
-                          })()
+                          // SECURITY — only link the address if it is a plain, valid email.
+                          const href = mailtoHref(person.email);
+                          return href ? <a href={href}>{person.email}</a> : person.email;
+                        })()
                         : "—"}
                     </DetailRow>
                     <DetailRow label="Institution">
