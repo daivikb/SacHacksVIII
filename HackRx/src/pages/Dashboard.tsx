@@ -11,7 +11,7 @@ import { useAcceptance } from "@/hooks/useAcceptance";
 import { X } from "lucide-react";
 
 const APPEAL_VIDEO = "https://www.youtube.com/embed/8RFbx4lK-Qs?si=2Spwih1i9thvaOdt";
-const APPEAL_EMAIL = "contact@sachacks.io";
+const APPEAL_EMAIL = "status@sachacks.io";
 
 // Midnight Pacific at the start of each day. November dates use PST (UTC-8):
 // daylight saving ends Nov 1, 2026.
