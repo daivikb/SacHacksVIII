@@ -33,7 +33,7 @@ const EMAILJS_URL = "https://api.emailjs.com/api/v1.0/email/send";
 export const EMAIL_EVENT_NAME = "SacHacks VIII";
 
 /** Where applicants are told to write back. */
-export const EMAIL_CONTACT = "contact@sachacks.io";
+export const EMAIL_CONTACT = "status@sachacks.io";
 
 /** The address decline emails are sent from. */
 export const EMAIL_FROM = "status@sachacks.io";
