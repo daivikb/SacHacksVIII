@@ -4,12 +4,15 @@
  * Firestore.
  *
  * Configure in .env (PLACEHOLDERS until the account is set up):
- *   VITE_EMAILJS_SERVICE_ID   the EmailJS email service (e.g. your Gmail)
+ *   VITE_EMAILJS_SERVICE_ID   the EmailJS email service, connected to the
+ *                             status@sachacks.io mailbox (EMAIL_FROM)
  *   VITE_EMAILJS_TEMPLATE_ID  the decline template
  *   VITE_EMAILJS_PUBLIC_KEY   the account's public key
  *
  * The EmailJS template should be set up as:
  *   To Email   {{to_email}}
+ *   From Email {{from_email}}
+ *   Reply To   {{reply_to}}
  *   Subject    {{subject}}
  *   Content    {{{message_html}}}   (triple braces: it's already escaped HTML)
  * Also sent, for a custom layout: {{to_name}}, {{reasons}}, {{comment}},
@@ -29,8 +32,11 @@ const EMAILJS_URL = "https://api.emailjs.com/api/v1.0/email/send";
 /** PLACEHOLDER — the event name printed in every email. */
 export const EMAIL_EVENT_NAME = "SacHacks VIII";
 
-/** PLACEHOLDER — where applicants are told to write back. */
-export const EMAIL_CONTACT = "YOUR_CONTACT_EMAIL@gmail.com";
+/** Where applicants are told to write back. */
+export const EMAIL_CONTACT = "contact@sachacks.io";
+
+/** The address decline emails are sent from. */
+export const EMAIL_FROM = "status@sachacks.io";
 
 /**
  * Reasons an admin can tick when declining an application. The label is the
@@ -145,6 +151,8 @@ export async function sendDeclineEmail(
         user_id: publicKey,
         template_params: {
           to_email: to,
+          from_email: EMAIL_FROM,
+          reply_to: EMAIL_CONTACT,
           to_name: name,
           subject: email.subject,
           reasons: details.reasons.map((r) => `- ${DECLINE_REASONS[r]}`).join("\n"),
