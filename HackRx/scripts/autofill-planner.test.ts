@@ -172,10 +172,22 @@ test("step 2: each 2 gets a 1, then 1s in threes", () => {
     assert.deepEqual(plan.unfilled, []);
 });
 
-test("step 2: two leftover solo people are paired", () => {
+test("step 2: two leftover solo people are paired, and not listed as unmatched", () => {
     const db = build({ S1: { members: ["a"], autofill: true }, S2: { members: ["b"], autofill: true } });
-    const after = apply(db, run(db, ["S1", "S2"]));
+    const plan = run(db, ["S1", "S2"]);
+    const after = apply(db, plan);
     assert.deepEqual([...after.teams.values()].map((t) => t.members.length), [2]);
+    assert.deepEqual(plan.unfilled, []);
+});
+
+test("unmatched teams are listed: extra pairs and a lone solo", () => {
+    const db = build({ P: { members: ["p1", "p2"], autofill: true }, Q: { members: ["q1", "q2"], autofill: true }, S: { members: ["s"], autofill: true } });
+    const plan = run(db, ["P", "Q", "S"]);
+    assert.equal(plan.merges.length, 1);
+    assert.equal(plan.unfilled.length, 1);
+    assert.equal(plan.unfilled[0].size, 2);
+    const lone = build({ S: { members: ["s"], autofill: true } });
+    assert.deepEqual(run(lone, ["S"]).unfilled, [{ teamId: "S", size: 1 }]);
 });
 
 test("step 2: nobody is left alone when it can be avoided (4 solos -> 2 + 2)", () => {
@@ -301,7 +313,6 @@ test("randomized: consistent after the full plan and after any subset of groups"
         const alone = poolLeft.filter((s) => s === 1).length;
         assert.ok(alone <= 1, `seed ${seed}: ${alone} left alone`);
         if (alone === 1) assert.equal(plan.merges.length, 0, `seed ${seed}: someone alone despite merges`);
-        assert.ok(poolLeft.filter((s) => s === 1).length === 0 || poolLeft.filter((s) => s === 2).length === 0 || plan.merges.length === 0 || true);
     }
 });
 

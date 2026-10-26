@@ -6,9 +6,8 @@
  *
  * Still placeholders, because nothing in Firestore backs them yet — each is
  * marked PLACEHOLDER inline:
- *   · team leaders (no leader field anywhere)
  *   · the "Waiting on you" request queue
- *   · team bulk actions (no service functions exist for them)
+ *   · the "Approve team change" and "Remove from team" bulk actions
  *   · the awards list and event dates/venue (hardcoded constants)
  *
  * Not shown at all (no placeholder line): per-hacker pitch, logistics and class
@@ -37,6 +36,8 @@ import {
   fetchAdminWorkspace,
   issueCertification,
   reviewApplication,
+  setTeamsAutofill,
+  updateTeamSettings,
   type AdminWorkspace,
 } from "@/services/admin.service";
 import {
@@ -100,6 +101,13 @@ interface TeamRow {
   track: string | null;
   /** The owner's autofill toggle on the team doc. */
   autofill: boolean;
+  /** False when the team only exists as a `team_id` on someone's user doc. */
+  hasDoc: boolean;
+  /** The team leader: the `owner` uid on the team doc. */
+  owner: string | null;
+  /** `members` and `pending` uids from the team doc. */
+  memberIds: string[];
+  pendingIds: string[];
   /** Everyone on the roster whose `team_id` is this team. */
   members: Row[];
 }
@@ -606,6 +614,101 @@ function DeclineDialog({
   );
 }
 
+const fieldLabelStyle: CSSProperties = {
+  display: "block", fontFamily: MONO, fontWeight: 500, fontSize: 11, lineHeight: 1,
+  letterSpacing: ".12em", color: C.ink40, marginBottom: 8,
+};
+
+/**
+ * Edits one team's leader and autofill setting. Rendered with a key built from
+ * the saved values, so it resets whenever the team changes or is reloaded.
+ */
+function TeamEditor({
+  team, busy, nameOf, onSave,
+}: {
+  team: TeamRow;
+  busy: boolean;
+  nameOf: (uid: string) => string;
+  onSave: (changes: { owner?: string; autofill?: boolean }) => void;
+}) {
+  const [owner, setOwner] = useState(team.owner ?? "");
+  const [autofill, setAutofill] = useState(team.autofill);
+
+  if (!team.hasDoc) {
+    return (
+      <div style={{ padding: "16px 20px", borderTop: `1px solid ${C.line}`, fontSize: 13, color: C.ink50 }}>
+        This team code has no team document, so there's nothing to edit yet.
+      </div>
+    );
+  }
+
+  const changes: { owner?: string; autofill?: boolean } = {};
+  if (owner && owner !== team.owner) changes.owner = owner;
+  if (autofill !== team.autofill) changes.autofill = autofill;
+  const dirty = Object.keys(changes).length > 0;
+  // A leader who isn't a member (bad data) is still shown, so the admin can see and fix it.
+  const options = team.owner && !team.memberIds.includes(team.owner) ? [team.owner, ...team.memberIds] : team.memberIds;
+
+  return (
+    <div style={{ padding: "16px 20px", borderTop: `1px solid ${C.line}` }}>
+      <label htmlFor={`sh-leader-${team.id}`} style={fieldLabelStyle}>LEADER</label>
+      <select
+        id={`sh-leader-${team.id}`}
+        value={owner}
+        disabled={busy || options.length === 0}
+        onChange={(e) => setOwner(e.target.value)}
+        style={{ ...selectStyle, width: "100%" }}
+      >
+        {!team.owner && <option value="">No leader set</option>}
+        {options.map((uid) => (
+          <option key={uid} value={uid} disabled={!team.memberIds.includes(uid)}>
+            {nameOf(uid)}{team.memberIds.includes(uid) ? "" : " (not a member)"}
+          </option>
+        ))}
+      </select>
+      <div style={{ fontSize: 12, color: C.ink45, marginTop: 6 }}>
+        The leader can invite people, remove members and change autofill.
+      </div>
+
+      <label
+        style={{
+          display: "flex", alignItems: "center", gap: 10, cursor: busy ? "not-allowed" : "pointer",
+          marginTop: 16, fontSize: 13.5,
+        }}
+      >
+        <input type="checkbox" checked={autofill} disabled={busy} onChange={(e) => setAutofill(e.target.checked)} />
+        <span>
+          Autofill
+          <span style={{ display: "block", fontSize: 12, color: C.ink45 }}>
+            Fill open spots with other hackers when autofill runs.
+          </span>
+        </span>
+      </label>
+
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
+        <GhostButton
+          onClick={() => { setOwner(team.owner ?? ""); setAutofill(team.autofill); }}
+          disabled={busy || !dirty}
+        >
+          Reset
+        </GhostButton>
+        <button
+          type="button"
+          className="sh-solid"
+          disabled={busy || !dirty}
+          onClick={() => onSave(changes)}
+          style={{
+            background: C.pink, border: `1px solid ${C.pink}`, color: "#fff",
+            borderRadius: 8, padding: "5px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+          }}
+        >
+          Save changes
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const SKIP_REASONS: Record<AutofillPlan["skipped"][number]["reason"], string> = {
   "autofill-off": "autofill is off",
   "not-found": "no team document",
@@ -714,11 +817,11 @@ function AutofillDialog({
               ))}
             </AutofillSection>
 
-            <AutofillSection title={`STILL UNDER ${MAX_TEAM_SIZE}`} count={plan.unfilled.length}>
+            <AutofillSection title="NO ONE LEFT TO MATCH WITH" count={plan.unfilled.length}>
               {plan.unfilled.map((u, i) => (
                 <AutofillLine key={u.teamId} last={i === plan.unfilled.length - 1}>
                   {teamOf(u.teamId)}
-                  <span style={dim}> · {u.size} of {MAX_TEAM_SIZE}</span>
+                  <span style={dim}> · stays at {u.size} of {MAX_TEAM_SIZE}</span>
                 </AutofillLine>
               ))}
             </AutofillSection>
@@ -883,11 +986,24 @@ const AdminDashboard = () => {
   const teams = useMemo<TeamRow[]>(() => {
     const byId = new Map<string, TeamRow>();
     workspace.teams.forEach((t) => {
-      byId.set(t.id, { id: t.id, name: text(t.name, `Team ${t.id}`), track: text(t.track) || null, autofill: t.autofill === true, members: [] });
+      byId.set(t.id, {
+        id: t.id,
+        name: text(t.name, `Team ${t.id}`),
+        track: text(t.track) || null,
+        autofill: t.autofill === true,
+        hasDoc: true,
+        owner: text(t.owner) || null,
+        memberIds: Array.isArray(t.members) ? t.members.map((m) => text(m)).filter(Boolean) : [],
+        pendingIds: Array.isArray(t.pending) ? t.pending.map((m) => text(m)).filter(Boolean) : [],
+        members: [],
+      });
     });
     roster.forEach((r) => {
       if (!r.teamId) return;
-      const team = byId.get(r.teamId) ?? { id: r.teamId, name: `Team ${r.teamId}`, track: null, autofill: false, members: [] };
+      const team = byId.get(r.teamId) ?? {
+        id: r.teamId, name: `Team ${r.teamId}`, track: null, autofill: false,
+        hasDoc: false, owner: null, memberIds: [], pendingIds: [], members: [],
+      };
       team.members.push(r);
       byId.set(r.teamId, team);
     });
@@ -1124,6 +1240,51 @@ const AdminDashboard = () => {
     void load();
   };
 
+  /** Saves the team editor (leader and/or autofill) for one team. */
+  const saveTeam = async (target: TeamRow, changes: { owner?: string; autofill?: boolean }) => {
+    if (inFlight.current) return; // SECURITY — block a second save while one is in progress
+    inFlight.current = true;
+    setBusy(true);
+    const error = await updateTeamSettings(target.id, changes);
+    setBusy(false);
+    inFlight.current = false;
+    if (error) {
+      toast({ title: "Couldn't update the team", description: error, variant: "destructive" });
+      return;
+    }
+    const parts = [
+      changes.owner !== undefined && `${memberNames.get(changes.owner) ?? "The new member"} now leads it`,
+      changes.autofill !== undefined && `autofill ${changes.autofill ? "on" : "off"}`,
+    ].filter(Boolean);
+    toast({ title: `${target.name} updated`, description: parts.join(" · ") });
+    void load();
+  };
+
+  /** Bulk bar: turns autofill on or off for every ticked (visible) team. */
+  const runBulkAutofill = async (on: boolean) => {
+    const ids = selectedTeamIds;
+    if (ids.length === 0) return;
+    // SECURITY — confirm before changing several teams in one click.
+    if (ids.length > CONFIRM_ABOVE && !window.confirm(`Turn autofill ${on ? "on" : "off"} for ${ids.length} teams?`)) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    const errors = await setTeamsAutofill(ids, on);
+    setBusy(false);
+    inFlight.current = false;
+    if (errors.length) {
+      toast({
+        title: errors.length === ids.length ? "Autofill not changed" : "Some teams weren't changed",
+        description: errors.length > 1 ? `${errors[0]} (+${errors.length - 1} more)` : errors[0],
+        variant: "destructive",
+      });
+    } else {
+      toast({ title: `Autofill ${on ? "on" : "off"}`, description: `${plural(ids.length, "team", "teams")} updated` });
+    }
+    clearSelection();
+    void load();
+  };
+
   /** Opens the autofill dialog and works out the preview for the selected teams. */
   const openAutofill = async () => {
     if (selectedTeamIds.length === 0 || inFlight.current) return;
@@ -1211,10 +1372,8 @@ const AdminDashboard = () => {
           // Needs a team-requests collection and a service function to resolve them.
           // Seen: Teams tab → tick a team → pink bulk bar above the table.
           { label: "Approve team change", primary: true, run: () => notWired("Team change approval") },
-          // PLACEHOLDER — promotes a member to team leader. Needs a leader field on
-          // the team doc (e.g. `leader_id`) and a service function to set it.
-          // Seen: Teams tab → tick a team → pink bulk bar above the table.
-          { label: "Make leader", run: () => notWired("Team leaders") },
+          { label: "Autofill on", run: () => void runBulkAutofill(true) },
+          { label: "Autofill off", run: () => void runBulkAutofill(false) },
           // PLACEHOLDER — removes a member from a team. Needs team membership stored
           // (a `members` array on the team, or `team_id` on each user) to edit.
           // Seen: Teams tab → tick a team → pink bulk bar above the table.
@@ -1871,8 +2030,18 @@ const AdminDashboard = () => {
                   {team && team.members.length > 0 ? (
                     <div style={{ padding: "6px 20px" }}>
                       {team.members.map((m, i) => (
-                        <DetailRow key={m.key} label={m.name} last={i === team.members.length - 1}>
-                          <span style={{ color: C.ink60, fontSize: 13 }}>{m.email}</span>
+                        <DetailRow key={m.key} label={m.name} last={i === team.members.length - 1 && team.pendingIds.length === 0}>
+                          <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                            <span style={{ color: C.ink60, fontSize: 13 }}>{m.email}</span>
+                            {m.memberId && m.memberId === team.owner && <Pill label="Leader" bg={C.pinkSoft} fg={C.pink} />}
+                          </span>
+                        </DetailRow>
+                      ))}
+                      {team.pendingIds.map((uid, i) => (
+                        <DetailRow key={`pending:${uid}`} label={memberNames.get(uid) ?? `User ${uid.slice(0, 6)}`} last={i === team.pendingIds.length - 1}>
+                          <span style={{ display: "flex", justifyContent: "flex-end" }}>
+                            <Pill label="Invited" bg="rgba(245,226,123,.14)" fg={C.gold} />
+                          </span>
                         </DetailRow>
                       ))}
                     </div>
@@ -1882,12 +2051,15 @@ const AdminDashboard = () => {
                     </div>
                   )}
 
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", padding: "16px 20px", borderTop: `1px solid ${C.line}` }}>
-                    {/* PLACEHOLDER — should let the admin pick a new leader for the focused
-                        team. Needs a leader field on the team doc and a service function.
-                        Seen: Teams tab → right-hand detail panel → footer buttons. */}
-                    <GhostButton onClick={() => notWired("Team leaders")}>Change leader</GhostButton>
-                  </div>
+                  {team && (
+                    <TeamEditor
+                      key={`${team.id}|${team.owner}|${team.autofill}|${team.memberIds.join(",")}`}
+                      team={team}
+                      busy={busy}
+                      nameOf={(uid) => memberNames.get(uid) ?? `User ${uid.slice(0, 6)}`}
+                      onSave={(changes) => void saveTeam(team, changes)}
+                    />
+                  )}
                 </div>
               )}
 

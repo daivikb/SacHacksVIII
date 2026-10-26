@@ -71,7 +71,7 @@ export type AutofillPlan = {
     placements: Placement[];
     /** Step 2. */
     merges: Merge[];
-    /** Pool teams that are still under SIZE afterwards. */
+    /** Pool teams step 2 found nobody for, so they stay under SIZE (merged teams aren't listed again). */
     unfilled: { teamId: string; size: number }[];
     /** Selected teams left out of the pool, and why. */
     skipped: { teamId: string; reason: SkipReason }[];
@@ -364,7 +364,10 @@ export function planAutofill(
         merges.push({ teamId: keep.id, joined, size: seats(keep) });
     }
 
-    const unfilled = pool.filter((t) => !t.deleted && seats(t) < SIZE).map((t) => ({ teamId: t.id, size: seats(t) }));
+    const merged = new Set(merges.map((m) => m.teamId));
+    const unfilled = pool
+        .filter((t) => !t.deleted && !merged.has(t.id) && seats(t) < SIZE)
+        .map((t) => ({ teamId: t.id, size: seats(t) }));
 
     /* ---------------- Writes, grouped ---------------- */
 
