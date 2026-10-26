@@ -47,6 +47,7 @@ import {
   type DeclineReason,
 } from "@/services/email.service";
 import { MAX_TEAM_SIZE } from "@/services/team.service";
+import { previewAutofill, runAutofill, type AutofillPlan } from "@/services/autofill.service";
 
 /* ------------------------------------------------------------------ */
 /* Config                                                              */
@@ -97,6 +98,8 @@ interface TeamRow {
   id: string;
   name: string;
   track: string | null;
+  /** The owner's autofill toggle on the team doc. */
+  autofill: boolean;
   /** Everyone on the roster whose `team_id` is this team. */
   members: Row[];
 }
@@ -603,6 +606,161 @@ function DeclineDialog({
   );
 }
 
+const SKIP_REASONS: Record<AutofillPlan["skipped"][number]["reason"], string> = {
+  "autofill-off": "autofill is off",
+  "not-found": "no team document",
+  "out-of-sync": "members don't match their user docs",
+};
+
+function AutofillSection({ title, count, children }: { title: string; count: number; children: ReactNode }) {
+  if (count === 0) return null;
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div style={{ fontFamily: MONO, fontWeight: 500, fontSize: 11, lineHeight: 1, letterSpacing: ".12em", color: C.ink40, marginBottom: 8 }}>
+        {title} ({count})
+      </div>
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, maxHeight: 200, overflowY: "auto" }}>{children}</div>
+    </div>
+  );
+}
+
+function AutofillLine({ children, last }: { children: ReactNode; last: boolean }) {
+  return (
+    <div style={{ padding: "8px 12px", fontSize: 13, borderBottom: last ? "none" : `1px solid ${C.line}` }}>{children}</div>
+  );
+}
+
+/**
+ * Previews an autofill run on the selected teams and asks before saving it.
+ * Nothing is written until Run autofill is pressed.
+ */
+function AutofillDialog({
+  plan, selectedCount, busy, nameOf, teamOf, onCancel, onConfirm,
+}: {
+  /** Null while the preview is loading. */
+  plan: AutofillPlan | null;
+  selectedCount: number;
+  busy: boolean;
+  nameOf: (uid: string) => string;
+  teamOf: (teamId: string) => string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, onCancel]);
+
+  const changes = plan ? plan.updates + plan.deletes : 0;
+  const dim = { color: C.ink45 };
+
+  return (
+    <div
+      onClick={() => { if (!busy) onCancel(); }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 100, background: "rgba(12,4,16,.72)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sh-autofill-title"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%", maxWidth: 560, maxHeight: "calc(100vh - 32px)", overflowY: "auto",
+          background: C.surface, border: `1px solid ${C.border18}`, borderRadius: 12, padding: 22,
+        }}
+      >
+        <h2 id="sh-autofill-title" style={headingStyle}>
+          Autofill {plural(selectedCount, "team", "teams")}
+        </h2>
+        <p style={{ margin: "8px 0 0", fontSize: 13, color: C.ink60 }}>
+          First, people alone on a selected autofill team join one of the teams that invited them
+          (fewest invites first) and their other invites are declined. Then the remaining selected
+          autofill teams are merged at random, aiming for {MAX_TEAM_SIZE} people per team.
+        </p>
+
+        {!plan && (
+          <div style={{ padding: "36px 0 18px", textAlign: "center", fontSize: 13, color: C.ink50 }}>
+            Working out the matches…
+          </div>
+        )}
+
+        {plan && (
+          <>
+            <AutofillSection title="JOINING A TEAM THAT INVITED THEM" count={plan.placements.length}>
+              {plan.placements.map((p, i) => (
+                <AutofillLine key={p.userId} last={i === plan.placements.length - 1}>
+                  <span style={{ fontWeight: 500 }}>{nameOf(p.userId)}</span>
+                  <span style={dim}> → </span>
+                  {teamOf(p.toTeam)}
+                  {p.declined.length > 0 && (
+                    <span style={dim}> · declines {plural(p.declined.length, "other invite", "other invites")}</span>
+                  )}
+                </AutofillLine>
+              ))}
+            </AutofillSection>
+
+            <AutofillSection title="MERGED AT RANDOM" count={plan.merges.length}>
+              {plan.merges.map((m, i) => (
+                <AutofillLine key={m.teamId} last={i === plan.merges.length - 1}>
+                  {teamOf(m.teamId)}
+                  <span style={dim}> ← </span>
+                  <span style={{ fontWeight: 500 }}>{m.joined.map((j) => nameOf(j.userId)).join(", ")}</span>
+                  <span style={dim}> · {m.size} of {MAX_TEAM_SIZE}</span>
+                </AutofillLine>
+              ))}
+            </AutofillSection>
+
+            <AutofillSection title={`STILL UNDER ${MAX_TEAM_SIZE}`} count={plan.unfilled.length}>
+              {plan.unfilled.map((u, i) => (
+                <AutofillLine key={u.teamId} last={i === plan.unfilled.length - 1}>
+                  {teamOf(u.teamId)}
+                  <span style={dim}> · {u.size} of {MAX_TEAM_SIZE}</span>
+                </AutofillLine>
+              ))}
+            </AutofillSection>
+
+            <AutofillSection title="NOT INCLUDED" count={plan.skipped.length}>
+              {plan.skipped.map((s, i) => (
+                <AutofillLine key={s.teamId} last={i === plan.skipped.length - 1}>
+                  {teamOf(s.teamId)}
+                  <span style={dim}> · {SKIP_REASONS[s.reason]}</span>
+                </AutofillLine>
+              ))}
+            </AutofillSection>
+
+            <p style={{ margin: "18px 0 0", fontSize: 12.5, color: C.ink50 }}>
+              {changes === 0
+                ? "Nothing to change for these teams."
+                : `${plural(plan.updates, "document", "documents")} updated, ${plural(plan.deletes, "team", "teams")} deleted. ` +
+                  "Anything that changed after this preview is skipped rather than overwritten."}
+            </p>
+          </>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 20 }}>
+          <GhostButton onClick={onCancel} disabled={busy}>Cancel</GhostButton>
+          <button
+            type="button"
+            className="sh-solid"
+            disabled={busy || !plan || changes === 0}
+            onClick={onConfirm}
+            style={{
+              background: C.pink, border: `1px solid ${C.pink}`, color: "#fff",
+              borderRadius: 8, padding: "5px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            {busy ? "Running…" : "Run autofill"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Component                                                           */
 /* ------------------------------------------------------------------ */
@@ -619,6 +777,8 @@ const AdminDashboard = () => {
   const inFlight = useRef(false);
   /** The applicants the decline dialog is open for, or null when it's closed. */
   const [declining, setDeclining] = useState<Row[] | null>(null);
+  /** The autofill dialog: the team ids it was opened for, and the preview once loaded. */
+  const [autofill, setAutofill] = useState<{ teamIds: string[]; plan: AutofillPlan | null } | null>(null);
 
   const [lens, setLens] = useState<Lens>("signups");
   const [selected, setSelected] = useState<Record<string, true>>({});
@@ -723,11 +883,11 @@ const AdminDashboard = () => {
   const teams = useMemo<TeamRow[]>(() => {
     const byId = new Map<string, TeamRow>();
     workspace.teams.forEach((t) => {
-      byId.set(t.id, { id: t.id, name: text(t.name, `Team ${t.id}`), track: text(t.track) || null, members: [] });
+      byId.set(t.id, { id: t.id, name: text(t.name, `Team ${t.id}`), track: text(t.track) || null, autofill: t.autofill === true, members: [] });
     });
     roster.forEach((r) => {
       if (!r.teamId) return;
-      const team = byId.get(r.teamId) ?? { id: r.teamId, name: `Team ${r.teamId}`, track: null, members: [] };
+      const team = byId.get(r.teamId) ?? { id: r.teamId, name: `Team ${r.teamId}`, track: null, autofill: false, members: [] };
       team.members.push(r);
       byId.set(r.teamId, team);
     });
@@ -735,6 +895,10 @@ const AdminDashboard = () => {
   }, [workspace.teams, roster]);
 
   const teamNames = useMemo(() => new Map(teams.map((t) => [t.id, t.name])), [teams]);
+  const memberNames = useMemo(
+    () => new Map(roster.filter((r) => r.memberId).map((r) => [r.memberId as string, r.name])),
+    [roster],
+  );
 
   const demos = useMemo<DemoRow[]>(
     () =>
@@ -809,6 +973,8 @@ const AdminDashboard = () => {
   // or certified by a bulk action, even though the admin could no longer see it
   // and the "N selected" count didn't include it.
   const selectedRows = visibleRoster.filter((r) => selected[r.key]);
+  // SECURITY — same rule for teams: autofill only runs on teams the admin can see ticked.
+  const selectedTeamIds = visibleTeams.filter((t) => selectedTeams[t.id]).map((t) => t.id);
 
   // SECURITY — every (user, certificate title) pair already issued, so the same
   // award can't be written twice for one person by a repeat click or re-selection.
@@ -958,6 +1124,53 @@ const AdminDashboard = () => {
     void load();
   };
 
+  /** Opens the autofill dialog and works out the preview for the selected teams. */
+  const openAutofill = async () => {
+    if (selectedTeamIds.length === 0 || inFlight.current) return;
+    const teamIds = selectedTeamIds;
+    setAutofill({ teamIds, plan: null });
+    const result = await previewAutofill(teamIds);
+    if ("error" in result) {
+      setAutofill(null);
+      toast({ title: "Couldn't preview autofill", description: result.error, variant: "destructive" });
+      return;
+    }
+    // Ignore a preview that finished after the dialog was closed or reopened.
+    setAutofill((current) => (current && current.teamIds === teamIds ? { teamIds, plan: result.plan } : current));
+  };
+
+  const confirmAutofill = async () => {
+    const plan = autofill?.plan;
+    if (!plan || inFlight.current) return; // SECURITY — block a second run while one is in progress
+    inFlight.current = true;
+    setBusy(true);
+    const result = await runAutofill(plan);
+    setBusy(false);
+    inFlight.current = false;
+    setAutofill(null);
+
+    const moved = plan.placements.length + plan.merges.reduce((n, m) => n + m.joined.length, 0);
+    if (result.failed || result.stale) {
+      toast({
+        title: result.saved ? "Autofill partly done" : "Autofill didn't run",
+        description:
+          `${plural(result.saved, "change group", "change groups")} saved` +
+          (result.stale ? ` · ${result.stale} skipped because those teams changed after the preview (run autofill again to pick them up)` : "") +
+          (result.failed ? ` · ${result.failed} failed: ${result.error}` : ""),
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Autofill done",
+        description:
+          `${plural(plan.placements.length, "person", "people")} joined a team that invited them · ` +
+          `${plural(plan.merges.length, "team", "teams")} merged · ${plural(moved, "hacker", "hackers")} moved`,
+      });
+    }
+    clearSelection();
+    void load();
+  };
+
   const emailSelected = () => {
     // SECURITY — only well-formed addresses reach the mail client (see isSafeEmail).
     const addresses = selectedRows
@@ -1048,6 +1261,18 @@ const AdminDashboard = () => {
       <main className="sh-admin">
         <style>{STYLES}</style>
         <PortalDecor />
+
+        {autofill && (
+          <AutofillDialog
+            plan={autofill.plan}
+            selectedCount={autofill.teamIds.length}
+            busy={busy}
+            nameOf={(uid) => memberNames.get(uid) ?? `User ${uid.slice(0, 6)}`}
+            teamOf={(id) => teamNames.get(id) ?? `Team ${id}`}
+            onCancel={() => setAutofill(null)}
+            onConfirm={() => void confirmAutofill()}
+          />
+        )}
 
         {declining && (
           <DeclineDialog
@@ -1176,6 +1401,21 @@ const AdminDashboard = () => {
                 <h2 style={headingStyle}>{titles[lens][0]}</h2>
                 <span style={{ fontSize: 13, color: C.ink45 }}>{titles[lens][1]}</span>
                 <span style={{ flex: 1 }} />
+                {isTeams && (
+                  <button
+                    type="button"
+                    className="sh-solid"
+                    onClick={() => void openAutofill()}
+                    disabled={busy || loading || selectedTeamIds.length === 0}
+                    title={selectedTeamIds.length === 0 ? "Tick the teams to autofill first" : undefined}
+                    style={{
+                      background: C.pink, border: `1px solid ${C.pink}`, color: "#fff",
+                      borderRadius: 8, padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                    }}
+                  >
+                    {selectedTeamIds.length ? `Autofill ${plural(selectedTeamIds.length, "team", "teams")}` : "Autofill teams"}
+                  </button>
+                )}
                 {isPeopleTable && (
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <select
@@ -1411,6 +1651,7 @@ const AdminDashboard = () => {
                                     {t.name.slice(0, 2).toUpperCase()}
                                   </span>
                                   <span style={{ fontWeight: 500, letterSpacing: "-.005em" }}>{t.name}</span>
+                                  {t.autofill && <Pill label="Autofill on" bg={C.pinkSoft} fg={C.pink} />}
                                 </span>
                               </td>
                               <td style={td}>
