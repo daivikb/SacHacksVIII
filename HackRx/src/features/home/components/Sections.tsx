@@ -160,6 +160,13 @@ const sponsorTiers = [
     ],
   },
   {
+    key: "compute",
+    label: "Compute",
+    items: [
+      { name: "Base44", logo: "/sponsors/base44.png", url: "https://base44.com/" },
+    ],
+  },
+  {
     key: "platinum",
     label: "Platinum",
     items: [
