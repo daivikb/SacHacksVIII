@@ -28,6 +28,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
+import { strToU8, zipSync } from "fflate";
 import { Layout } from "@/components/layout/Layout";
 import { PortalDecor } from "@/components/layout/PortalDecor";
 import { useAuth } from "@/context/auth-context";
@@ -875,6 +876,8 @@ const AdminDashboard = () => {
   const [workspace, setWorkspace] = useState<AdminWorkspace>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  /** Progress of the "Download resumes" zip, or null when it isn't running. */
+  const [resumeProgress, setResumeProgress] = useState<{ done: number; total: number } | null>(null);
   // SECURITY — `busy` state only updates on the next render, so a fast double
   // click could start the same bulk write twice. This ref flips synchronously.
   const inFlight = useRef(false);
@@ -1358,6 +1361,118 @@ const AdminDashboard = () => {
     a.download = `${EVENT_NAME.toLowerCase().replace(/\s+/g, "-")}-roster.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  /**
+   * Every résumé from accepted and still-pending applicants (declined are left
+   * out), in one zip that unpacks to a single folder. Files are fetched through
+   * /api/resume, since Drive/Dropbox don't allow cross-origin reads. Links that
+   * couldn't be fetched are listed with the reason in _index.csv.
+   */
+  const downloadResumes = async () => {
+    if (!user || resumeProgress) return;
+    const applicants = roster.filter((r) => r.answers && (r.signup === "accepted" || r.signup === "pending"));
+    if (applicants.length === 0) {
+      toast({ title: "No applicants yet", description: "There are no accepted or pending applications." });
+      return;
+    }
+    setResumeProgress({ done: 0, total: applicants.length });
+    try {
+      const token = await user.getIdToken();
+      const folder = "SacHacks VIII Resumes";
+      const files: Record<string, Uint8Array> = {};
+      const used = new Set<string>();
+      const index: string[][] = [];
+      let done = 0;
+      let saved = 0;
+      let aborted = false;
+      const queue = [...applicants];
+
+      const fetchOne = async (r: Row) => {
+        const link = text(r.answers?.resume_link);
+        const status = statusTone(r.signup).label;
+        let file = "";
+        let problem = "";
+        if (!link) {
+          problem = "No résumé link";
+        } else {
+          let res: Response | null = null;
+          try {
+            res = await fetch(`/api/resume?url=${encodeURIComponent(link)}`, {
+              headers: { authorization: `Bearer ${token}` },
+            });
+          } catch {
+            problem = "Network error";
+          }
+          // Only a real /api/resume answer carries x-resume-ext. Anything else that
+          // says 200 (the SPA's index.html, or a dev server serving the source) isn't a
+          // résumé, so stop the whole run rather than save junk files.
+          const resumeExt = res?.headers.get("x-resume-ext");
+          if (res?.ok && !resumeExt) {
+            aborted = true;
+            queue.length = 0;
+            throw new Error("The résumé download service isn't running here (/api/resume answered with something else).");
+          }
+          if (res) {
+            if (res.ok) {
+              const ext = (resumeExt ?? "pdf").replace(/[^a-z0-9]/gi, "") || "pdf";
+              // SECURITY — names are participant-typed; keep them to safe filename characters.
+              const base = r.name.replace(/[^\p{L}\p{N} .'-]/gu, "").replace(/\s+/g, " ").trim().slice(0, 80) || "Applicant";
+              let name = `${base}.${ext}`;
+              for (let n = 2; used.has(name.toLowerCase()); n++) name = `${base} (${n}).${ext}`;
+              used.add(name.toLowerCase());
+              files[`${folder}/${name}`] = new Uint8Array(await res.arrayBuffer());
+              file = name;
+              saved++;
+            } else {
+              const body = (await res.json().catch(() => null)) as { error?: string } | null;
+              problem = body?.error ?? `Download failed (${res.status})`;
+            }
+          }
+        }
+        index.push([r.name, r.email, status, file, link, problem]);
+        done++;
+        if (!aborted) setResumeProgress({ done, total: applicants.length });
+      };
+
+      // A few at a time, so the file hosts don't rate-limit us.
+      await Promise.all(
+        Array.from({ length: 5 }, async () => {
+          for (let r = queue.shift(); r; r = queue.shift()) await fetchOne(r);
+        }),
+      );
+
+      index.sort((x, y) => x[0].localeCompare(y[0]));
+      const csv = [["Name", "Email", "Status", "File", "Résumé link", "Not downloaded because"], ...index]
+        .map((line) => line.map((cell) => csvCell(cell)).join(",")) // SECURITY — see csvCell
+        .join("\n");
+      files[`${folder}/_index.csv`] = strToU8(csv);
+
+      // PDFs are already compressed, so store them as-is (level 0) — much faster.
+      const archive = zipSync(files, { level: 0 });
+      const url = URL.createObjectURL(new Blob([archive as BlobPart], { type: "application/zip" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "sachacks-viii-resumes.zip";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+
+      const missed = applicants.length - saved;
+      toast({
+        title: "Résumés downloaded",
+        description:
+          `${plural(saved, "résumé", "résumés")} saved` +
+          (missed ? ` · ${missed} couldn't be fetched — see _index.csv in the folder for links and reasons` : ""),
+      });
+    } catch (e) {
+      toast({
+        title: "Couldn't download résumés",
+        description: e instanceof Error ? e.message : "Something went wrong.",
+        variant: "destructive",
+      });
+    } finally {
+      setResumeProgress(null);
+    }
   };
 
   const bulkActions: { label: string; primary?: boolean; quiet?: boolean; run: () => void }[] = [
@@ -1886,6 +2001,9 @@ const AdminDashboard = () => {
               >
                 <span>{shownCount}</span>
                 <span style={{ flex: 1 }} />
+                <GhostButton onClick={() => void downloadResumes()} disabled={loading || resumeProgress !== null}>
+                  {resumeProgress ? `Résumés ${resumeProgress.done}/${resumeProgress.total}…` : "Download resumes"}
+                </GhostButton>
                 <GhostButton onClick={exportCsv} disabled={isPeopleTable ? visibleRoster.length === 0 : true}>
                   Export CSV
                 </GhostButton>
