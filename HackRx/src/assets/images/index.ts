@@ -30,11 +30,11 @@ const mascotYellow = mascotYellowMain;
 
 import sachackslogo from "./sachackslogo.png"
 
-import prize1 from "./prize1.png"
-import prize2 from "./prize2.png"
-import prize3 from "./prize3.png"
-import prize4 from "./prize4.png"
-import prize5 from "./prize5.png"
+import prize1 from "./prize1.webp"
+import prize2 from "./prize2.webp"
+import prize3 from "./prize3.webp"
+import prize4 from "./prize4.webp"
+import prize5 from "./prize5.webp"
 
 export {
   mascot,
