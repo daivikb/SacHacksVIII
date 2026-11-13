@@ -11,7 +11,6 @@ import {
 } from "framer-motion";
 import { mascot, mascotYellow, HERO_PHOTOS, sachackslogo } from "@/assets/images";
 import { useRegistrationDialog } from "@/components/layout/Layout";
-import { useApplicationsOpen } from "@/config/deadlines";
 
 
 // ---------------------------------------------------------------------------
@@ -100,7 +99,6 @@ export function Hero({ gridInView = false }: { gridInView?: boolean }) {
   const sectionRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number>(0);
   const { setOpen } = useRegistrationDialog();
-  const registrationOpen = useApplicationsOpen();
 
   // ---- Mouse state (normalised 0-1, resting at 0.5) ----
 
@@ -394,7 +392,7 @@ export function Hero({ gridInView = false }: { gridInView?: boolean }) {
                   }}
                   {...ctaTriggers}
                 >
-                  {registrationOpen ? "Register Now →" : "Log In →"}
+                  Register Now →
                 </a>
 
               </div>

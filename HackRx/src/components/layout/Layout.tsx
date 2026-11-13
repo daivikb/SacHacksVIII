@@ -14,7 +14,6 @@ import {
 import { useGlitchTriggers } from "@/hooks/useGlitchTriggers";
 import { useNavigate, useLocation } from "react-router-dom";
 import { AuthDialog } from "@/features/auth/components/AuthDialog";
-import { applicationsOpen } from "@/config/deadlines";
 import { useAuth } from "@/context/auth-context";
 import { signOut } from "@/services/auth.service";
 import { useAdmin } from "@/hooks/useAdmin";
@@ -341,8 +340,7 @@ export const Layout = ({
         open,
         mode,
         setOpen: (v: boolean) => {
-          // "Register" buttons open log in once applications close.
-          if (v) setMode(applicationsOpen() ? "signup" : "login");
+          if (v) setMode("signup");
           setOpen(v);
         },
         openAuth,

@@ -2,7 +2,6 @@ import { Amoeba, useRegistrationDialog } from "@/components/layout/Layout";
 import { setRegisterHover } from "@/utils/effects";
 import { useGlitchTriggers } from "@/hooks/useGlitchTriggers";
 import { useScrollDissolve } from "@/hooks/useScrollDissolve";
-import { useApplicationsOpen } from "@/config/deadlines";
 import {
   comicCloudGrey,
   comicCloudOutline,
@@ -247,7 +246,6 @@ const Chapter = ({ id, title, sub, children }: { id: string; title: string; sub:
 const CTAButton = () => {
   const { setOpen } = useRegistrationDialog();
   const triggers = useGlitchTriggers(setRegisterHover);
-  const registrationOpen = useApplicationsOpen();
   return (
     <a
       href="#register"
@@ -267,7 +265,7 @@ const CTAButton = () => {
           strokeLinejoin="round"
         />
       </svg>
-      {registrationOpen ? <span>Register<br />Now!</span> : <span>Log<br />In!</span>}
+      <span>Register<br />Now!</span>
     </a>
   );
 };
