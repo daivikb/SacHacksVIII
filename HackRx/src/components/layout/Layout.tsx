@@ -310,16 +310,19 @@ export const PortalNav = () => {
 export const Layout = ({
   children,
   portal = false,
+  bare = false,
 }: {
   children: ReactNode;
   portal?: boolean;
+  /** Skip the comic chrome (nav, grain, glitch cycle); the page brings its own. */
+  bare?: boolean;
 }) => {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<AuthDialogMode>("signup");
   const navigate = useNavigate();
 
   // Ambient glitch pulse: runs on every page (home + 404).
-  useEffect(() => startInvertCycle(45000, 500), []);
+  useEffect(() => (bare ? undefined : startInvertCycle(45000, 500)), [bare]);
 
   // Pause / downgrade glitches in background tabs and when frames get tight.
   useEffect(() => startPerfMonitor(), []);
@@ -348,12 +351,16 @@ export const Layout = ({
         openAuth,
       }}
     >
-      <div className="hackrx-page">
-        <SvgDefs />
-        <div className="grain-overlay" aria-hidden="true" />
-        {portal ? <PortalNav /> : <Nav />}
-        {children}
-      </div>
+      {bare ? (
+        children
+      ) : (
+        <div className="hackrx-page">
+          <SvgDefs />
+          <div className="grain-overlay" aria-hidden="true" />
+          {portal ? <PortalNav /> : <Nav />}
+          {children}
+        </div>
+      )}
       <AuthDialog open={open} mode={mode} onOpenChange={setOpen} onModeChange={setMode} />
     </RegistrationContext.Provider>
   );

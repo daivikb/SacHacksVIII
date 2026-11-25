@@ -132,8 +132,8 @@ const ShieldIcon = (
 
 const prizes = [
   { place: "1st Place", amount: "Best Translational Science", body1: "For the team moving discovery to bedside fastest.", body2: "Prize: Bose Quietcomfort SC Headphones", sponsor: "Sponsored by the BME Department at UC Davis" },
-  { place: "1st Place", amount: "Best Clinical Impact", body1: "Care that measurably improves outcomes.", body2: "Prize: Samsung 34\" ViewFinity UWQHD 120Hz Ultra-Wide Curved Monitor", sponsor: "Sponsored by Abridge" },
-  { place: "1st Place", amount: "Best Biotech Innovation", body1: "Hardware, wetware, and data pushed somewhere new.", body2: "Prize: Sandisk Extreme Go Portable SSD (1TB)", sponsor: "Sponsored by Base44" },
+  { place: "1st Place", amount: "Best Clinical Impact", body1: "For the build most likely to improve patient outcomes.", body2: "Prize: Samsung 34\" ViewFinity UWQHD 120Hz Ultra-Wide Curved Monitor", sponsor: "Sponsored by Abridge" },
+  { place: "1st Place", amount: "Best Biotech Innovation", body1: "For new work in hardware, wetware, or data.", body2: "Prize: Sandisk Extreme Go Portable SSD (1TB)", sponsor: "Sponsored by Base44" },
   { place: "1st Place", amount: "Health Equity Award", body1: "For the build that widens access to care.", body2: "Prize: Bose Soundlink Home Bluetooth Speaker", sponsor: "Sponsored by the Betty Irene Moore School of Nursing" },
   { place: "1st Place", amount: "Best Interdisciplinary Hack", body1: "Best overall hack across disciplines.", body2: "Chance to win Atari Gamestation Go Handheld Gaming Console Bundle with Gamepad, Gold", sponsor: "Sponsored by the UC Davis College of L&S and MBA Program" },
 ];
@@ -142,12 +142,12 @@ const prizeImages = [prize1, prize2, prize3, prize4, prize5];
 
 const timeline = [
   {
-    date: "October 12", what: "Applications open", body: "Registration goes live — grab a spot before they run out.", icon: (
+    date: "October 12", what: "Applications open", body: "Registration opens.", icon: (
       <svg className="icon" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="42" fill="none" stroke="var(--ink-black)" strokeWidth="4" /><path d="M50 26 v26 l18 12" stroke="var(--ink-black)" strokeWidth="4" {...S} /></svg>
     )
   },
   {
-    date: "November 12", what: "Applications close", body: "Last call — applications shut at end of day.", icon: (
+    date: "November 12", what: "Applications close", body: "Last call: applications close at 11:59pm.", icon: (
       <svg className="icon" viewBox="0 0 100 100" aria-hidden="true"><circle cx="35" cy="38" r="12" fill="none" stroke="var(--ink-black)" strokeWidth="3.4" /><circle cx="65" cy="38" r="12" fill="none" stroke="var(--ink-black)" strokeWidth="3.4" /><path d="M18 78c2-14 10-22 17-22M82 78c-2-14-10-22-17-22" stroke="var(--ink-black)" strokeWidth="3.4" {...S} /></svg>
     )
   },
@@ -205,13 +205,13 @@ const faqs = [
         >
           Betty Irene Moore
         </a>{" "}
-        in Sacramento, CA. Date is Sunday, Novemeber 15th
+        in Sacramento, CA, on Sunday, November 15th.
       </>
     ),
   },
   { q: "Who can attend?", a: "Any college student or recent graduate is welcome to participate in SacHacks!" },
   { q: "When is the application deadline?", a: "Thursday, November 12th at 11:59pm" },
-  { q: "What is a hackathon?", a: "A hackathon is a 24-hour event where students collaborate to build creative projects and compete for prizes." },
+  { q: "What is a hackathon?", a: "A hackathon is an event where students team up, build a project in a short window, and compete for prizes." },
   { q: "What is the maximum team size?", a: "Teams should be of 1-3 members. No more than 3 allowed on a single team." },
 ];
 
@@ -296,16 +296,16 @@ export const Content = () => {
         </div>
         <h2 className="h2">Diagnose the problem. Prescribe the fix.</h2>
         <p>
-          We have diagnosed the problem: healthcare needs technologies, platforms, and workflows that
-          accelerate translational medicine and make biomedical research more efficient, accessible,
-          and impactful. What fix would you prescribe?
+          Here is our diagnosis: translational medicine moves too slowly, and biomedical research is
+          harder to run and harder to reach than it should be. Build the technology, platform, or
+          workflow that fixes part of it. What would you prescribe?
         </p>
       </section>
 
       <section className="panel" id="sponsors">
         <Amoeba tone="gold" size="sm" style={{ top: "14%", left: "3%", animationDelay: "-3s, -6s" }} />
         <p className="eyebrow">Sponsors</p>
-        <h2 className="h2">Backed by builders.</h2>
+        <h2 className="h2">Thanks to our sponsors.</h2>
 
         <div className="sponsor-pyramid">
           {sponsorTiers.map((tier) => (
@@ -357,9 +357,9 @@ export const Content = () => {
         <Amoeba tone="crimson" size="tiny" style={{ top: "12%", right: "6%", animationDelay: "-4s, -1s" }} />
         <div className="section-head">
           <p className="eyebrow">Timeline</p>
-          <span className="meta-label">6 milestones</span>
+          <span className="meta-label">3 milestones</span>
         </div>
-        <h2 className="h2">Your journey starts here.</h2>
+        <h2 className="h2">Dates to know.</h2>
         <ol className="timeline-road">
           {timeline.map((t) => (
             <li className="road-stop" key={t.what}>
@@ -377,7 +377,7 @@ export const Content = () => {
       <section className="panel" id="faq">
         <Amoeba tone="violet" size="tiny" style={{ top: "10%", right: "3%", animationDelay: "-5s, -2s" }} />
         <p className="eyebrow">FAQ</p>
-        <h2 className="h2">Questions, answered.</h2>
+        <h2 className="h2">Common questions.</h2>
         {faqs.map((f, i) => (
           <details className="faq-item" key={f.q} open={i === 0}>
             <summary>{f.q}</summary>
@@ -412,7 +412,7 @@ export const Content = () => {
         <Amoeba tone="violet" size="sm" style={{ bottom: "14%", right: "8%", animationDelay: "-9s, -5s" }} />
         <p className="eyebrow" style={{ textAlign: "center" }}>Join the response team</p>
         <h2 className="h2">The world needs new heroes.<br />Will you answer?</h2>
-        <p className="lead">One day. Endless possibilities. Build, innovate, heal.</p>
+        <p className="lead">One day in Sacramento to build something for translational medicine.</p>
         <CTAButton />
       </section>
 
@@ -423,7 +423,7 @@ export const Content = () => {
           <span aria-hidden="true">·</span>
           <button type="button" onClick={() => openAuth("contact")}>Contact us</button>
         </nav>
-        <span>Building the future of healthcare, together.</span>
+        <span>Sunday, November 15 · Betty Irene Moore School of Nursing</span>
       </footer>
     </div>
   );
